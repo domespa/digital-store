@@ -8,7 +8,8 @@
     "start": "node dist/server.js",
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "create-admin": "ts-node src/utils/createAdmin.ts"
   },
   "dependencies": {
     "express": "^4.18.2",

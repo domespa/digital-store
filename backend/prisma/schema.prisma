@@ -23,6 +23,7 @@ model User {
   password String
   firstName String
   lastName String
+  role UserRole @default(USER)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -142,6 +143,11 @@ model EmailQueue {
 }
 
 // ENUM
+enum UserRole {
+  USER
+  ADMIN
+}
+
 enum OrderStatus {
   PENDING
   PAID
