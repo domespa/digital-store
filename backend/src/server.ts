@@ -5,6 +5,8 @@ import dotenv from "dotenv";
 import { PrismaClient } from "./generated/prisma";
 // IMPORT ROTTE
 import authRoutes from "./routes/auth";
+import productRoutes from "./routes/products";
+import adminRoutes from "./routes/admin";
 
 // CARICHIAMO LE VARIABILI DI AMBIENTE
 dotenv.config();
@@ -40,6 +42,8 @@ app.get("/api/health", (req, res) => {
 });
 
 app.use("/api/auth", authRoutes);
+app.use("/api/products", productRoutes);
+app.use("/api/admin", adminRoutes); // ADMIN
 
 // TEST CONNESSIONE PRIMA
 app.get("/api/test-db", async (req, res) => {
