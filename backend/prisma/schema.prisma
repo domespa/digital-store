@@ -1,0 +1,181 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+
+// USERS
+
+model User {
+  id String @id @default(cuid())  // USIAMO STRINGA IN ID PER MOTIVI DI SICUREZZA, ID NUMERICI SONO FACILMENTE RECUPERABILI - IL DEFAULT GENERA ID AUTOMATICI ALFANUMERICI
+  email String @unique  // NESSUNA DUPLICAZIONE
+  password String
+  firstName String
+  lastName String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // RELAZIONI
+  orders Order[]
+
+  @@map("users") // NOME TABELLA
+}
+
+// PRODOTTI
+model Product{
+  id String @id @default(cuid())
+  name String
+  description String?
+  price Decimal @db.Decimal(10, 2) // MAX 99999999.99 
+  fileName String
+  filePath String
+  isActive Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // RELAZIONI
+  orderItems OrderItem[]
+
+  @@map("products")
+}
+
+// ORDINI
+model Order {
+  id String @id @default(cuid())
+
+  // DATI DEL CLIENTE
+  customerEmail String
+  customerFirstName String?
+  customerLastName String?
+
+  // DATI ORDINE
+  total Decimal @db.Decimal(10, 2)
+  status OrderStatus @default(PENDING)
+
+  // PAGAMENTO
+  paymentProvider PaymentProvider?
+  stripePaymentIntentId String?
+  paypalOrderId String?
+  paymentStatus PaymentStatus @default(PENDING)
+
+  // TIMESTAMPS
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // RELAZIONI
+  userId String?
+  user User? @relation(fields: [userId], references: [id])
+  orderItems OrderItem[]
+
+  @@map("orders")
+}
+
+// ORDER ITEMS
+model OrderItem {
+  id String @id @default(cuid())
+  quantity Int @default(1)
+  price Decimal @db.Decimal(10, 2)
+
+  // RELAZIONI
+  orderId String
+  productId String
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@map("order_items")
+}
+
+// SCONTI
+model DiscountCode {
+  id String @id @default(cuid())
+  code String @unique
+  description String?
+  discountType DiscountType 
+  discountValue Decimal @db.Decimal(10, 2)
+  isActive Boolean @default(true)
+  validFrom DateTime?
+  validUntil DateTime?
+  maxUses Int?
+  currentUses Int @default(0)
+  createdAt DateTime @default(now())
+
+  @@map("discount_codes")
+}
+
+// TRACK VISITE
+model PageView {
+  id String @id @default(cuid())
+  page String
+  userAgent String?
+  ipAddress String?
+  country String?
+  createdAt DateTime @default(now())
+
+  @@map("page_views")
+}
+
+// EMAIL PER GLI ORDINI
+model EmailQueue {
+  id String @id @default(cuid())
+  to String
+  subject String
+  htmlContent String
+  textContent String?
+  emailType EmailType
+  status EmailStatus @default(PENDING)
+  attempts Int @default(0)
+  lastAttempt DateTime?
+  createdAt DateTime @default(now())
+
+  @@map("email_queue")
+}
+
+// ENUM
+enum OrderStatus {
+  PENDING
+  PAID
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum PaymentProvider {
+  STRIPE
+  PAYPAL
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED
+}
+
+enum EmailType {
+  ORDER_CONFIRMATION
+  DOWNLOAD_LINK
+  CART_ABANDONMENT
+  RECEIPT
+}
+
+enum EmailStatus {
+  PENDING
+  SENT
+  FAILED
+}
