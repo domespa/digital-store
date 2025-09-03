@@ -7,14 +7,255 @@ import {
   OrderDetailResponse,
   CreateOrderResponse,
   OrderItemData,
-  OrderFilters,
   UpdateOrderStatusRequest,
+  OrderWithDetails,
+  OrderWithAdminDetails,
+  OrderWithUserDetails,
 } from "../types/order";
+import { stripe } from "../services/stripe";
+import {
+  sendOrderConfirmation,
+  sendOrderStatusUpdate,
+} from "../services/emailService";
 
 const prisma = new PrismaClient();
 
+// UTILITY CONV TO RESP
+const formatAdminOrderResponse = (
+  order: OrderWithAdminDetails
+): OrderResponse => ({
+  id: order.id,
+  customerEmail: order.customerEmail,
+  customerFirstName: order.customerFirstName,
+  customerLastName: order.customerLastName,
+  total: order.total.toNumber(),
+  status: order.status,
+  paymentProvider: order.stripePaymentIntentId
+    ? "STRIPE"
+    : order.paypalOrderId
+    ? "PAYPAL"
+    : null,
+  paymentStatus: order.paymentStatus,
+  createdAt: order.createdAt,
+  updatedAt: order.updatedAt,
+  orderItems: order.orderItems.map((item) => ({
+    id: item.id,
+    quantity: item.quantity,
+    price: item.price.toNumber(),
+    productId: item.productId,
+    product: item.product,
+  })),
+  userId: order.userId || undefined,
+  user: order.user
+    ? {
+        id: order.user.id,
+        firstName: order.user.firstName,
+        lastName: order.user.lastName,
+        email: order.user.email,
+      }
+    : undefined,
+});
+
+const formatUserOrderResponse = (
+  order: OrderWithUserDetails
+): OrderResponse => ({
+  id: order.id,
+  customerEmail: order.customerEmail,
+  customerFirstName: order.customerFirstName,
+  customerLastName: order.customerLastName,
+  total: order.total.toNumber(),
+  status: order.status,
+  paymentProvider: order.stripePaymentIntentId
+    ? "STRIPE"
+    : order.paypalOrderId
+    ? "PAYPAL"
+    : null,
+  paymentStatus: order.paymentStatus,
+  createdAt: order.createdAt,
+  updatedAt: order.updatedAt,
+  orderItems: order.orderItems.map((item) => ({
+    id: item.id,
+    quantity: item.quantity,
+    price: item.price.toNumber(),
+    productId: item.productId,
+    product: item.product,
+  })),
+  userId: order.userId || undefined,
+});
+
+const formatOrderResponse = (order: OrderWithDetails): OrderResponse => ({
+  id: order.id,
+  customerEmail: order.customerEmail,
+  customerFirstName: order.customerFirstName,
+  customerLastName: order.customerLastName,
+  total: order.total.toNumber(),
+  status: order.status,
+  paymentProvider: order.stripePaymentIntentId
+    ? "STRIPE"
+    : order.paypalOrderId
+    ? "PAYPAL"
+    : null,
+  paymentStatus: order.paymentStatus,
+  createdAt: order.createdAt,
+  updatedAt: order.updatedAt,
+  orderItems: order.orderItems.map((item) => ({
+    id: item.id,
+    quantity: item.quantity,
+    price: item.price.toNumber(),
+    productId: item.productId,
+    product: item.product,
+  })),
+  userId: order.userId || undefined,
+  user: order.user
+    ? {
+        id: order.user.id,
+        firstName: order.user.firstName,
+        lastName: order.user.lastName,
+        email: order.user.email,
+      }
+    : undefined,
+});
+
 const getStringParam = (param: unknown): string | undefined => {
   return typeof param === "string" ? param : undefined;
+};
+
+// LISTA ORDINI  - ADMIN
+// GET /api/admin/orders
+export const getOrdersAdmin = async (req: Request, res: Response) => {
+  try {
+    const search = getStringParam(req.query.search);
+    const status = getStringParam(req.query.status);
+    const paymentStatus = getStringParam(req.query.paymentStatus);
+    const startDate = getStringParam(req.query.startDate);
+    const endDate = getStringParam(req.query.endDate);
+    const sortBy = getStringParam(req.query.sortBy) || "createdAt";
+    const sortOrder = getStringParam(req.query.sortOrder) || "desc";
+    const page = getStringParam(req.query.page) || "1";
+    const limit = getStringParam(req.query.limit) || "20";
+
+    // VALIDAZIONI PARAMETRI
+    const validSortFields = ["createdAt", "total", "status"];
+    const validSortBy = validSortFields.includes(sortBy) ? sortBy : "createdAt";
+    const validSortOrder =
+      sortOrder === "asc" || sortOrder === "desc" ? sortOrder : "desc";
+
+    // FILTRI
+    const where: Prisma.OrderWhereInput = {};
+
+    // RICERCA
+    if (search) {
+      where.OR = [
+        {
+          customerEmail: {
+            contains: search,
+            mode: "insensitive",
+          },
+        },
+        {
+          customerFirstName: {
+            contains: search,
+            mode: "insensitive",
+          },
+        },
+        {
+          customerLastName: {
+            contains: search,
+            mode: "insensitive",
+          },
+        },
+        {
+          id: {
+            contains: search,
+            mode: "insensitive",
+          },
+        },
+      ];
+    }
+
+    // FILTRI CON TIPI
+    if (status) {
+      where.status = status as Prisma.EnumOrderStatusFilter;
+    }
+
+    if (paymentStatus) {
+      where.paymentStatus = paymentStatus as Prisma.EnumPaymentStatusFilter;
+    }
+
+    if (startDate || endDate) {
+      where.createdAt = {};
+      if (startDate) {
+        where.createdAt.gte = new Date(startDate);
+      }
+      if (endDate) {
+        const endOfDay = new Date(endDate);
+        endOfDay.setHours(23, 59, 59, 999);
+        where.createdAt.lte = endOfDay;
+      }
+    }
+
+    // PAGINAZIONE
+    const pageNum = Math.max(1, Number(page) || 1);
+    const limitNum = Math.min(100, Math.max(1, Number(limit) || 20));
+    const skip = (pageNum - 1) * limitNum;
+
+    const [orders, total] = await Promise.all([
+      prisma.order.findMany({
+        where,
+        include: {
+          orderItems: {
+            include: {
+              product: {
+                select: {
+                  id: true,
+                  name: true,
+                  description: true,
+                  fileName: true,
+                  filePath: true,
+                },
+              },
+            },
+          },
+          user: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+            },
+          },
+        },
+        orderBy: { [validSortBy]: validSortOrder },
+        skip,
+        take: limitNum,
+      }),
+      prisma.order.count({ where }),
+    ]);
+
+    // USA LA FUNZIONE UTILITY
+    const ordersResponse: OrderResponse[] = orders.map(
+      formatAdminOrderResponse
+    );
+
+    res.json({
+      success: true,
+      message: "Orders retrieved successfully",
+      orders: ordersResponse,
+      total,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum),
+      },
+    } as OrderListResponse);
+  } catch (error: unknown) {
+    console.error("Get admin orders error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to get orders",
+    });
+  }
 };
 
 // CREAZIONE ORDINE
@@ -148,11 +389,29 @@ export const createOrder = async (req: Request, res: Response) => {
 
     const total = subtotal - discount;
 
+    // CONTROLLO AMOUNT MINIMO STRIPE
+    if (total < 0.5) {
+      return res.status(400).json({
+        success: false,
+        message: "Order total must be at least €0.50",
+      });
+    }
+
     // VERIFICHIAMO SE L'UTENTE è REGISTRATO
     const userId = req.user?.id || null;
 
     // CREAZIONE ORDINE
     const result = await prisma.$transaction(async (tx) => {
+      // PAYMENT INTENT STRIPE
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: Math.round(total * 100),
+        currency: "eur",
+        metadata: {
+          customerEmail: customerEmail.toLowerCase(),
+          ...(customerFirstName && { customerFirstName }),
+          ...(customerLastName && { customerLastName }),
+        },
+      });
       // CREA ORDINE
       const order = await tx.order.create({
         data: {
@@ -162,6 +421,7 @@ export const createOrder = async (req: Request, res: Response) => {
           total: total,
           status: "PENDING",
           paymentStatus: "PENDING",
+          stripePaymentIntentId: paymentIntent.id,
           userId: userId,
           orderItems: {
             create: orderItemsData,
@@ -176,7 +436,6 @@ export const createOrder = async (req: Request, res: Response) => {
                   name: true,
                   description: true,
                   fileName: true,
-                  // NON includere filePath per sicurezza
                 },
               },
             },
@@ -201,42 +460,35 @@ export const createOrder = async (req: Request, res: Response) => {
         });
       }
 
-      return order;
+      return { order, clientSecret: paymentIntent.client_secret };
     });
 
-    // PREPARIAMO LA RESPONSE
-    const orderResponse: OrderResponse = {
-      id: result.id,
-      customerEmail: result.customerEmail,
-      customerFirstName: result.customerFirstName,
-      customerLastName: result.customerLastName,
-      total: result.total.toNumber(),
-      status: result.status,
-      paymentProvider: result.stripePaymentIntentId
-        ? "STRIPE"
-        : result.paypalOrderId
-        ? "PAYPAL"
-        : null,
-      paymentStatus: result.paymentStatus,
-      createdAt: result.createdAt,
-      updatedAt: result.updatedAt,
-      orderItems: result.orderItems.map((item) => ({
-        id: item.id,
-        quantity: item.quantity,
-        price: item.price.toNumber(),
-        productId: item.productId,
-        product: item.product,
-      })),
-      userId: result.userId || undefined,
-    };
+    // INVIA EMAIL DI CONFERMA
+    const { order, clientSecret } = result;
+    const orderResponse = formatOrderResponse(order);
+
+    try {
+      await sendOrderConfirmation(orderResponse);
+      console.log(`Order confirmation email sent for order: ${order.id}`);
+    } catch (emailError) {
+      console.error("Failed to send order confirmation email:", emailError);
+    }
 
     res.status(201).json({
       success: true,
       message: "Order created successfully",
       order: orderResponse,
+      clientSecret,
     } as CreateOrderResponse);
   } catch (error: unknown) {
     console.error("Create order error:", error);
+
+    if (error instanceof Error && error.message.includes("stripe")) {
+      return res.status(400).json({
+        success: false,
+        message: "Payment processing error. Please try again.",
+      });
+    }
 
     res.status(500).json({
       success: false,
@@ -289,31 +541,7 @@ export const getUserOrders = async (req: Request, res: Response) => {
       }),
     ]);
 
-    // CONTERTO DECIMAL IN NUMBER
-    const ordersResponse: OrderResponse[] = orders.map((order) => ({
-      id: order.id,
-      customerEmail: order.customerEmail,
-      customerFirstName: order.customerFirstName,
-      customerLastName: order.customerLastName,
-      total: order.total.toNumber(),
-      status: order.status,
-      paymentProvider: order.stripePaymentIntentId
-        ? "STRIPE"
-        : order.paypalOrderId
-        ? "PAYPAL"
-        : null,
-      paymentStatus: order.paymentStatus,
-      createdAt: order.createdAt,
-      updatedAt: order.updatedAt,
-      orderItems: order.orderItems.map((item) => ({
-        id: item.id,
-        quantity: item.quantity,
-        price: item.price.toNumber(),
-        productId: item.productId,
-        product: item.product,
-      })),
-      userId: order.userId || undefined,
-    }));
+    const ordersResponse: OrderResponse[] = orders.map(formatUserOrderResponse);
 
     res.json({
       success: true,
@@ -362,6 +590,7 @@ export const getOrderById = async (req: Request, res: Response) => {
             id: true,
             firstName: true,
             lastName: true,
+            email: true,
           },
         },
       },
@@ -377,40 +606,15 @@ export const getOrderById = async (req: Request, res: Response) => {
     // CONTROLLO LE AUTORZZAZIONI
     const isOwner = req.user && order.userId === req.user.id;
     const isAdmin = req.user && req.user.role === "ADMIN";
-    const isGuestOwner = !req.user && !order.userId;
 
-    if (!isOwner && !isAdmin && !isGuestOwner) {
+    if (!isOwner && !isAdmin) {
       return res.status(403).json({
         success: false,
         message: "Access denied",
       });
     }
 
-    // PREPARO LA RESPOSNE
-    const orderResponse: OrderResponse = {
-      id: order.id,
-      customerEmail: order.customerEmail,
-      customerFirstName: order.customerFirstName,
-      customerLastName: order.customerLastName,
-      total: order.total.toNumber(),
-      status: order.status,
-      paymentProvider: order.stripePaymentIntentId
-        ? "STRIPE"
-        : order.paypalOrderId
-        ? "PAYPAL"
-        : null,
-      paymentStatus: order.paymentStatus,
-      createdAt: order.createdAt,
-      updatedAt: order.updatedAt,
-      orderItems: order.orderItems.map((item) => ({
-        id: item.id,
-        quantity: item.quantity,
-        price: item.price.toNumber(),
-        productId: item.productId,
-        product: item.product,
-      })),
-      userId: order.userId || undefined,
-    };
+    const orderResponse = formatOrderResponse(order);
 
     res.json({
       success: true,
@@ -444,6 +648,8 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
       });
     }
 
+    const previousStatus = order.status;
+
     // PREPARIAMO I DATI PER L'UPDATE
     const data: Prisma.OrderUpdateInput = {};
 
@@ -469,34 +675,30 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
             },
           },
         },
+        user: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+          },
+        },
       },
     });
 
-    // CONVERTO LA RESP
-    const orderResponse: OrderResponse = {
-      id: updatedOrder.id,
-      customerEmail: updatedOrder.customerEmail,
-      customerFirstName: updatedOrder.customerFirstName,
-      customerLastName: updatedOrder.customerLastName,
-      total: updatedOrder.total.toNumber(),
-      status: updatedOrder.status,
-      paymentProvider: updatedOrder.stripePaymentIntentId
-        ? "STRIPE"
-        : updatedOrder.paypalOrderId
-        ? "PAYPAL"
-        : null,
-      paymentStatus: updatedOrder.paymentStatus,
-      createdAt: updatedOrder.createdAt,
-      updatedAt: updatedOrder.updatedAt,
-      orderItems: updatedOrder.orderItems.map((item) => ({
-        id: item.id,
-        quantity: item.quantity,
-        price: item.price.toNumber(),
-        productId: item.productId,
-        product: item.product,
-      })),
-      userId: updatedOrder.userId || undefined,
-    };
+    const orderResponse = formatOrderResponse(updatedOrder);
+
+    // INVIA EMAIL SE STATUS CAMBIATO
+    if (updateData.status && updateData.status !== previousStatus) {
+      try {
+        await sendOrderStatusUpdate(orderResponse, previousStatus);
+        console.log(
+          `Order status update email sent for order: ${updatedOrder.id} (${previousStatus} → ${updateData.status})`
+        );
+      } catch (emailError) {
+        console.error("Failed to send order status update email:", emailError);
+      }
+    }
 
     res.json({
       success: true,

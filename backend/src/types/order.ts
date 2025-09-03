@@ -1,3 +1,4 @@
+import { Prisma } from "../generated/prisma";
 export interface CartItem {
   productId: string;
   quantity: number;
@@ -42,6 +43,12 @@ export interface OrderResponse {
   updatedAt: Date;
   orderItems: OrderItemResponse[];
   userId?: string; // SE REGISTRATO
+  user?: {
+    id: string;
+    firstName: string | null;
+    lastName: string | null;
+    email: string;
+  };
 }
 
 export interface OrderListResponse {
@@ -96,3 +103,76 @@ export interface OrderItemData {
   quantity: number;
   price: number;
 }
+
+// TIPI PRISMA SPECIFICI PER I CONTROLLER
+export type OrderWithDetails = Prisma.OrderGetPayload<{
+  include: {
+    orderItems: {
+      include: {
+        product: {
+          select: {
+            id: true;
+            name: true;
+            description: true;
+            fileName: true;
+            filePath?: true;
+          };
+        };
+      };
+    };
+    user: {
+      select: {
+        id: true;
+        firstName: true;
+        lastName: true;
+        email: true;
+      };
+    };
+  };
+}>;
+
+// TIPO PER ADMIN CON PIÙ DETTAGLI
+export type OrderWithAdminDetails = Prisma.OrderGetPayload<{
+  include: {
+    orderItems: {
+      include: {
+        product: {
+          select: {
+            id: true;
+            name: true;
+            description: true;
+            fileName: true;
+            filePath: true;
+          };
+        };
+      };
+    };
+    user: {
+      select: {
+        id: true;
+        firstName: true;
+        lastName: true;
+        email: true;
+      };
+    };
+  };
+}>;
+
+// TIPO PER USER ORDERS (SENZA FILEPATH)
+export type OrderWithUserDetails = Prisma.OrderGetPayload<{
+  include: {
+    orderItems: {
+      include: {
+        product: {
+          select: {
+            id: true;
+            name: true;
+            description: true;
+            fileName: true;
+            // NO filePath per utenti normali
+          };
+        };
+      };
+    };
+  };
+}>;

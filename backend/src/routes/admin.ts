@@ -5,6 +5,10 @@ import {
   deleteProduct,
   getProductsAdmin,
 } from "../controllers/productController";
+import {
+  updateOrderStatus,
+  getOrdersAdmin,
+} from "../controllers/orderController";
 import { requireAdmin } from "../middleware/auth";
 
 const router = Router();
@@ -27,5 +31,11 @@ router.put("/products/:id", updateProduct);
 // ELIMINAZIONE SOFT
 // DELETE /api/admin/products/:id
 router.delete("/products/:id", deleteProduct);
+
+// ORDINE
+// GET /api/admin/orders
+router.get("/orders", getOrdersAdmin);
+// PUT /api/admin/orders/:id/status
+router.put("/orders/:id/status", updateOrderStatus);
 
 export default router;
