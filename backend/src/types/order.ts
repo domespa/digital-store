@@ -15,6 +15,10 @@ export interface CreateOrderRequest {
 
   // SCONTI
   discountCode?: string;
+
+  // TIPI PAGAMENTI
+  paymentProvider?: "STRIPE" | "PAYPAL";
+  currency?: string;
 }
 
 export interface OrderItemResponse {
@@ -73,9 +77,14 @@ export interface CreateOrderResponse {
   success: boolean;
   message: string;
   order: OrderResponse;
+
   // PAGAMENTI
-  paymentClientSecret?: string; // STRIPE
-  paymentUrl?: string; // PAYPAL
+  clientSecret?: string;
+  approvalUrl?: string;
+  paymentProvider?: string;
+  currency?: string;
+  displayTotal?: number;
+  exchangeRate?: number;
 }
 
 export interface OrderFilters {

@@ -63,6 +63,9 @@ model Order {
   // DATI ORDINE
   total Decimal @db.Decimal(10, 2)
   status OrderStatus @default(PENDING)
+  currency String @default("EUR")
+  exchangeRate Decimal? @db.Decimal(10, 4) 
+  originalAmount Decimal? @db.Decimal(10, 2)
 
   // PAGAMENTO
   paymentProvider PaymentProvider?

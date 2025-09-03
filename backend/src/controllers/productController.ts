@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { PrismaClient, Prisma } from "../generated/prisma";
+import { currencyService } from "../services/currency";
 import {
   CreateProductRequest,
   UpdateProductRequest,
@@ -12,6 +13,14 @@ import {
 } from "../types/product";
 
 const prisma = new PrismaClient();
+
+declare global {
+  namespace Express {
+    interface Request {
+      currency?: string;
+    }
+  }
+}
 
 const getStringParam = (param: unknown): string | undefined => {
   return typeof param === "string" ? param : undefined;
@@ -28,6 +37,8 @@ export const getProducts = async (req: Request, res: Response) => {
     const sortOrder = getStringParam(req.query.sortOrder) || "desc";
     const page = getStringParam(req.query.page) || "1";
     const limit = getStringParam(req.query.limit) || "10";
+
+    const currency = req.currency || "EUR";
 
     // VALIDAZIONI PARAMETRI
     const validSortFields = ["name", "price", "createdAt"];
@@ -52,10 +63,29 @@ export const getProducts = async (req: Request, res: Response) => {
       where.price = {};
 
       if (minPrice !== undefined) {
-        where.price.gte = Number(minPrice);
+        let minPriceEUR = Number(minPrice);
+        if (currency !== "EUR") {
+          const conversion = await currencyService.convertPrice(
+            Number(minPrice),
+            currency,
+            "EUR"
+          );
+          minPriceEUR = conversion.convertedAmount;
+        }
+        where.price.gte = minPriceEUR;
       }
+
       if (maxPrice !== undefined) {
-        where.price.lte = Number(maxPrice);
+        let maxPriceEUR = Number(maxPrice);
+        if (currency !== "EUR") {
+          const conversion = await currencyService.convertPrice(
+            Number(maxPrice),
+            currency,
+            "EUR"
+          );
+          maxPriceEUR = conversion.convertedAmount;
+        }
+        where.price.lte = maxPriceEUR;
       }
     }
 
@@ -83,20 +113,60 @@ export const getProducts = async (req: Request, res: Response) => {
     ]);
 
     // MAPPIAMO PER CONVERTIRE DECIMAL IN NUMBER
-    const products = rawProducts.map((product) => ({
-      ...product,
-      price: product.price.toNumber(),
-    }));
+    const productsWithCurrency = await Promise.all(
+      rawProducts.map(async (product) => {
+        const basePrice = product.price.toNumber();
+
+        if (currency === "EUR") {
+          return {
+            ...product,
+            price: basePrice,
+            displayPrice: basePrice,
+            currency: "EUR",
+            originalPrice: basePrice,
+            originalCurrency: "EUR",
+            formattedPrice: currencyService.formatPrice(basePrice, "EUR"),
+            exchangeRate: 1,
+            exchangeSource: "same" as const,
+          };
+        }
+
+        const conversion = await currencyService.convertPrice(
+          basePrice,
+          "EUR",
+          currency
+        );
+
+        return {
+          ...product,
+          price: basePrice,
+          displayPrice: conversion.convertedAmount,
+          currency,
+          originalPrice: basePrice,
+          originalCurrency: "EUR",
+          formattedPrice: currencyService.formatPrice(
+            conversion.convertedAmount,
+            currency
+          ),
+          exchangeRate: conversion.rate,
+          exchangeSource: conversion.source,
+        };
+      })
+    );
 
     res.json({
       success: true,
       message: "Products retrieved successfully",
-      products,
+      products: productsWithCurrency,
       total,
       pagination: {
         page: pageNum,
         limit: limitNum,
         totalPages: Math.ceil(total / limitNum),
+      },
+      currency: {
+        current: currency,
+        supported: currencyService.getSupportedCurrencies(),
       },
     });
   } catch (error: unknown) {
@@ -115,6 +185,7 @@ export const getProducts = async (req: Request, res: Response) => {
 export const getProductById = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    const currency = req.currency || "EUR";
 
     const rawProduct = await prisma.product.findUnique({
       where: { id },
@@ -142,16 +213,54 @@ export const getProductById = async (req: Request, res: Response) => {
       } as ProductDetailResponse);
     }
 
+    const basePrice = rawProduct.price.toNumber();
+
     // CONVERTIRE DECIMAL IN NUMBER
-    const product: PublicProductResponse = {
-      ...rawProduct,
-      price: rawProduct.price.toNumber(),
-    };
+    let productWithCurrency;
+
+    if (currency === "EUR") {
+      productWithCurrency = {
+        ...rawProduct,
+        price: basePrice,
+        displayPrice: basePrice,
+        currency: "EUR",
+        originalPrice: basePrice,
+        originalCurrency: "EUR",
+        formattedPrice: currencyService.formatPrice(basePrice, "EUR"),
+        exchangeRate: 1,
+        exchangeSource: "same" as const,
+      };
+    } else {
+      const conversion = await currencyService.convertPrice(
+        basePrice,
+        "EUR",
+        currency
+      );
+
+      productWithCurrency = {
+        ...rawProduct,
+        price: basePrice,
+        displayPrice: conversion.convertedAmount,
+        currency,
+        originalPrice: basePrice,
+        originalCurrency: "EUR",
+        formattedPrice: currencyService.formatPrice(
+          conversion.convertedAmount,
+          currency
+        ),
+        exchangeRate: conversion.rate,
+        exchangeSource: conversion.source,
+      };
+    }
 
     res.json({
       success: true,
       message: "Product retrieved successfully",
-      product,
+      product: productWithCurrency,
+      currency: {
+        current: currency,
+        supported: currencyService.getSupportedCurrencies(),
+      },
     } as ProductDetailResponse);
   } catch (error: unknown) {
     console.error("Get product by id error:", error);
@@ -445,6 +554,7 @@ export const getProductsAdmin = async (req: Request, res: Response) => {
         limit: limitNum,
         totalPages: Math.ceil(total / limitNum),
       },
+      currency: "EUR",
     });
   } catch (error: unknown) {
     console.error("Get admin products error:", error);
@@ -452,6 +562,75 @@ export const getProductsAdmin = async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: "Failed to get products",
+    });
+  }
+};
+
+// CONVERSIONE PREZZO MANUALE
+export const convertProductPrice = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { fromCurrency, toCurrency, amount } = req.body;
+
+    if (!fromCurrency || !toCurrency) {
+      return res.status(400).json({
+        success: false,
+        message: "fromCurrency and toCurrency are required",
+      });
+    }
+
+    let priceToConvert = amount;
+
+    if (!amount && id) {
+      const product = await prisma.product.findUnique({
+        where: { id },
+        select: { price: true, isActive: true, name: true },
+      });
+
+      if (!product || !product.isActive) {
+        return res.status(404).json({
+          success: false,
+          message: "Product not found or not active",
+        });
+      }
+
+      priceToConvert = product.price.toNumber();
+    }
+
+    if (!priceToConvert) {
+      return res.status(400).json({
+        success: false,
+        message: "Amount or valid product ID required",
+      });
+    }
+
+    const conversion = await currencyService.convertPrice(
+      priceToConvert,
+      fromCurrency,
+      toCurrency
+    );
+
+    res.json({
+      success: true,
+      data: {
+        originalAmount: priceToConvert,
+        convertedAmount: conversion.convertedAmount,
+        fromCurrency,
+        toCurrency,
+        exchangeRate: conversion.rate,
+        source: conversion.source,
+        formattedPrice: currencyService.formatPrice(
+          conversion.convertedAmount,
+          toCurrency
+        ),
+        timestamp: conversion.timestamp,
+      },
+    });
+  } catch (error) {
+    console.error("Convert price error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to convert price",
     });
   }
 };

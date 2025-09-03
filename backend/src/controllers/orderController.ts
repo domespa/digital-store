@@ -13,6 +13,8 @@ import {
   OrderWithUserDetails,
 } from "../types/order";
 import { stripe } from "../services/stripe";
+import { paypalService } from "../services/paypal";
+import { currencyService } from "../services/currency";
 import {
   sendOrderConfirmation,
   sendOrderStatusUpdate,
@@ -269,7 +271,12 @@ export const createOrder = async (req: Request, res: Response) => {
       customerLastName,
       items,
       discountCode,
-    }: CreateOrderRequest = req.body;
+      paymentProvider = "STRIPE",
+      currency = "EUR",
+    }: CreateOrderRequest & {
+      paymentProvider?: "STRIPE" | "PAYPAL";
+      currency?: string;
+    } = req.body;
 
     // VALIDAZIONE
     if (!customerEmail || !items || items.length === 0) {
@@ -296,6 +303,26 @@ export const createOrder = async (req: Request, res: Response) => {
           message: "Each item must have productId and positive quantity",
         });
       }
+    }
+
+    // VALIDAZIONE CURRENCY
+    const supportedCurrencies = currencyService
+      .getSupportedCurrencies()
+      .map((c) => c.code);
+    if (!supportedCurrencies.includes(currency)) {
+      return res.status(400).json({
+        success: false,
+        message: `Currency ${currency} not supported. Supported currencies: ${supportedCurrencies.join(
+          ", "
+        )}`,
+      });
+    }
+
+    if (!["STRIPE", "PAYPAL"].includes(paymentProvider)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid payment provider. Must be STRIPE or PAYPAL",
+      });
     }
 
     // VERIFICA DISPONIBILITà DEL PRODOTTO
@@ -389,11 +416,31 @@ export const createOrder = async (req: Request, res: Response) => {
 
     const total = subtotal - discount;
 
+    let displayTotal = total;
+    let exchangeRate = 1;
+
+    if (currency !== "EUR") {
+      const conversion = await currencyService.convertPrice(
+        total,
+        "EUR",
+        currency
+      );
+      displayTotal = conversion.convertedAmount;
+      exchangeRate = conversion.rate;
+    }
+
     // CONTROLLO AMOUNT MINIMO STRIPE
-    if (total < 0.5) {
+    if (paymentProvider === "STRIPE" && displayTotal < 0.5) {
       return res.status(400).json({
         success: false,
-        message: "Order total must be at least €0.50",
+        message: "Stripe requires minimum €0.50",
+      });
+    }
+    // CONTROLLO AMOUNT MINIMO PAYPAL
+    if (paymentProvider === "PAYPAL" && displayTotal < 1.0) {
+      return res.status(400).json({
+        success: false,
+        message: "PayPal requires minimum €1.00",
       });
     }
 
@@ -402,16 +449,42 @@ export const createOrder = async (req: Request, res: Response) => {
 
     // CREAZIONE ORDINE
     const result = await prisma.$transaction(async (tx) => {
-      // PAYMENT INTENT STRIPE
-      const paymentIntent = await stripe.paymentIntents.create({
-        amount: Math.round(total * 100),
-        currency: "eur",
-        metadata: {
-          customerEmail: customerEmail.toLowerCase(),
-          ...(customerFirstName && { customerFirstName }),
-          ...(customerLastName && { customerLastName }),
-        },
-      });
+      let paymentData: {
+        stripePaymentIntentId?: string;
+        paypalOrderId?: string;
+        clientSecret?: string | null;
+        approvalUrl?: string | null;
+      } = {};
+
+      if (paymentProvider === "STRIPE") {
+        const paymentIntent = await stripe.paymentIntents.create({
+          amount: Math.round(displayTotal * 100),
+          currency: currency.toLowerCase(),
+          metadata: {
+            customerEmail: customerEmail.toLowerCase(),
+            originalAmount: total.toString(),
+            exchangeRate: exchangeRate.toString(),
+            ...(customerFirstName && { customerFirstName }),
+            ...(customerLastName && { customerLastName }),
+          },
+        });
+        paymentData = {
+          stripePaymentIntentId: paymentIntent.id,
+          clientSecret: paymentIntent.client_secret,
+        };
+      } else if (paymentProvider === "PAYPAL") {
+        const paypalOrder = await paypalService.createOrder({
+          amount: displayTotal,
+          currency: currency,
+          orderId: `ORDER-${Date.now()}`,
+        });
+        paymentData = {
+          paypalOrderId: paypalOrder.id,
+          approvalUrl: paypalOrder.links?.find((link) => link.rel === "approve")
+            ?.href,
+        };
+      }
+
       // CREA ORDINE
       const order = await tx.order.create({
         data: {
@@ -421,7 +494,11 @@ export const createOrder = async (req: Request, res: Response) => {
           total: total,
           status: "PENDING",
           paymentStatus: "PENDING",
-          stripePaymentIntentId: paymentIntent.id,
+          currency: currency,
+          exchangeRate: exchangeRate,
+          originalAmount: currency !== "EUR" ? total : null,
+          stripePaymentIntentId: paymentData.stripePaymentIntentId || null,
+          paypalOrderId: paymentData.paypalOrderId || null,
           userId: userId,
           orderItems: {
             create: orderItemsData,
@@ -451,8 +528,11 @@ export const createOrder = async (req: Request, res: Response) => {
             : false,
         },
       });
+      console.log(
+        `Order created: ${order.id}, Provider: ${paymentProvider}, Currency: ${currency}, Amount: ${displayTotal}, Exchange Rate: ${exchangeRate}`
+      );
 
-      // AGGIORNIAMO IL CONTATORE DELLO SCONTO USATO
+      // AGGIORNA SCONTO SE PRESENTE
       if (discountCodeRecord) {
         await tx.discountCode.update({
           where: { id: discountCodeRecord.id },
@@ -460,11 +540,16 @@ export const createOrder = async (req: Request, res: Response) => {
         });
       }
 
-      return { order, clientSecret: paymentIntent.client_secret };
+      // CORREGGI IL RETURN - usa paymentData invece di paymentIntent
+      return {
+        order,
+        clientSecret: paymentData.clientSecret,
+        approvalUrl: paymentData.approvalUrl,
+      };
     });
 
     // INVIA EMAIL DI CONFERMA
-    const { order, clientSecret } = result;
+    const { order, clientSecret, approvalUrl } = result;
     const orderResponse = formatOrderResponse(order);
 
     try {
@@ -478,7 +563,12 @@ export const createOrder = async (req: Request, res: Response) => {
       success: true,
       message: "Order created successfully",
       order: orderResponse,
-      clientSecret,
+      ...(clientSecret && { clientSecret }),
+      ...(approvalUrl && { approvalUrl }),
+      paymentProvider,
+      currency,
+      displayTotal,
+      exchangeRate,
     } as CreateOrderResponse);
   } catch (error: unknown) {
     console.error("Create order error:", error);
@@ -487,6 +577,16 @@ export const createOrder = async (req: Request, res: Response) => {
       return res.status(400).json({
         success: false,
         message: "Payment processing error. Please try again.",
+      });
+    }
+
+    if (
+      error instanceof Error &&
+      (error.message.includes("paypal") || error.message.includes("PayPal"))
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "PayPal processing error. Please try again.",
       });
     }
 
