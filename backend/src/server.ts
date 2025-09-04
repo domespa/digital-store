@@ -4,6 +4,19 @@ import helmet from "helmet";
 import dotenv from "dotenv";
 import { PrismaClient } from "./generated/prisma";
 
+// IMPORT SECURITY
+import {
+  generalLimiter,
+  speedLimiter,
+  authLimiter,
+  orderLimiter,
+} from "./middleware/rateLimiting";
+import {
+  requestLogger,
+  sanitizeInput,
+  checkOrigin,
+} from "./middleware/security";
+
 // IMPORT ROTTE
 import authRoutes from "./routes/auth";
 import productRoutes from "./routes/products";
@@ -11,6 +24,8 @@ import orderRoutes from "./routes/order";
 import userRoutes from "./routes/user";
 import adminRoutes from "./routes/admin";
 import webhookRoutes from "./routes/webhook";
+import categoryRoutes from "./routes/category";
+import inventoryRoutes from "./routes/inventory";
 
 // CARICHIAMO LE VARIABILI DI AMBIENTE
 dotenv.config();
@@ -22,15 +37,25 @@ const prisma = new PrismaClient();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// MIDDLEWARE CON ELMET
+// MIDDLEWARE SICUREZZA
 app.use(helmet());
+app.use(requestLogger);
+
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || "http://localhost:3001",
+    origin:
+      process.env.FRONTEND_URL ||
+      "http://localhost:3001" ||
+      "http://localhost:3000",
     credentials: true,
   })
 );
 
+// RATE
+app.use(generalLimiter);
+app.use(speedLimiter);
+
+// STRIPE
 app.use("/api/stripe", webhookRoutes);
 
 // PARSIAMO I DATI
@@ -41,29 +66,35 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.get("/api/health", (req, res) => {
   res.json({
     status: "OK",
-    message: "backend connesso correttamente",
+    message: "Digital Store Backend running",
     timestamp: new Date().toISOString(),
     readable: new Date().toLocaleString("it-IT"),
+    environment: process.env.NODE_ENV || "development",
+    version: "1.0.0",
   });
 });
 
-app.use("/api/auth", authRoutes);
+app.use("/api/auth", authLimiter, authRoutes);
 app.use("/api/products", productRoutes);
-app.use("/api/orders", orderRoutes);
+app.use("/api/orders", orderLimiter, orderRoutes);
 app.use("/api/user", userRoutes);
 app.use("/api/admin", adminRoutes); // ADMIN
+app.use("/api/categories", categoryRoutes);
+app.use("/api/inventory", inventoryRoutes);
 
-// TEST CONNESSIONE PRIMA
+// TEST CONNESSIONE PRISMA
 app.get("/api/test-db", async (req, res) => {
   try {
     const userCount = await prisma.user.count();
     const productCount = await prisma.product.count();
+    const orderCount = await prisma.order.count();
 
     res.json({
       status: "Database collegato",
       tables: {
         users: userCount,
         products: productCount,
+        orders: orderCount,
       },
       timestamp: new Date().toISOString(),
     });
@@ -79,6 +110,7 @@ app.get("/api/test-db", async (req, res) => {
 // PAGINA NON TROVATA
 app.use("*", (req, res) => {
   res.status(404).json({
+    success: false,
     error: "Page not found",
     path: req.originalUrl,
     method: req.method,
@@ -95,6 +127,13 @@ app.use(
   ) => {
     console.error("Global error:", error);
 
+    if (error instanceof Error && error.message.includes("Too many requests")) {
+      return res.status(429).json({
+        success: false,
+        error: "Too many requests",
+      });
+    }
+
     let status = 500;
     let message = "Something went wrong";
 
@@ -109,6 +148,7 @@ app.use(
       }
     }
     res.status(status).json({
+      success: false,
       error: "Internal Error",
       message,
     });
@@ -123,7 +163,10 @@ app.listen(PORT, () => {
     🧪 Health: http://localhost:${PORT}/api/health  
     🗃️  Database: http://localhost:${PORT}/api/test-db
     📊 Prisma Studio: http://localhost:5555
+    🔒 Security: Rate limiting & input sanitization enabled
+    📝 Logging: Request logging active
     ⏰ Started at: ${new Date().toLocaleString()}
+    🌍 Environment: ${process.env.NODE_ENV || "development"}
   `);
 });
 

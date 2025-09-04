@@ -4,6 +4,7 @@ export interface CreateProductRequest {
   price: number;
   fileName: string;
   filePath: string;
+  categoryId?: string;
 }
 
 export interface UpdateProductRequest {
@@ -13,18 +14,40 @@ export interface UpdateProductRequest {
   fileName?: string;
   filePath?: string;
   isActive?: boolean;
+  categoryId?: string;
+  stock?: number;
+  lowStockThreshold?: number;
+  trackInventory?: boolean;
+  allowBackorder?: boolean;
 }
 
 export interface ProductResponse {
   id: string;
   name: string;
+  slug: string;
   description: string | null;
+  shortDescription: string | null;
   price: number;
-  fileName: string;
-  filePath: string;
-  isActive: boolean;
+  originalPrice: number | null;
+  fileName: string | null;
+  filePath: string | null;
   createdAt: Date;
   updatedAt: Date;
+  publishedAt: Date | null;
+  stock: number;
+  lowStockThreshold: number;
+  trackInventory: boolean;
+  allowBackorder: boolean;
+  viewCount: number;
+  downloadCount: number;
+  rating: number;
+  reviewCount: number;
+  isActive: boolean;
+  isFeatured: boolean;
+  isDigital: boolean;
+  seoTitle: string | null;
+  seoDescription: string | null;
+  categoryId: string | null;
 }
 
 export interface PublicProductResponse {

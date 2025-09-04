@@ -1,11 +1,13 @@
+// src/types/order.ts
 import { Prisma } from "../generated/prisma";
+
 export interface CartItem {
   productId: string;
   quantity: number;
 }
 
 export interface CreateOrderRequest {
-  // DATI CLIENTE OBBLIGATORI ANCHE PER OPSITI
+  // DATI CLIENTE OBBLIGATORI ANCHE PER OSPITI
   customerEmail: string;
   customerFirstName?: string;
   customerLastName?: string;
@@ -21,20 +23,23 @@ export interface CreateOrderRequest {
   currency?: string;
 }
 
-export interface OrderItemResponse {
+// ============== TIPI PER UTENTI NORMALI (SENZA filePath) ==============
+
+export interface UserOrderItemResponse {
   id: string;
   quantity: number;
   price: number;
-  productId: string;
+  productId: string | null;
   product: {
     id: string;
     name: string;
     description: string | null;
-    fileName: string;
-  };
+    fileName: string | null;
+    // NO filePath per sicurezza - solo admin possono vederlo
+  } | null;
 }
 
-export interface OrderResponse {
+export interface UserOrderResponse {
   id: string;
   customerEmail: string;
   customerFirstName: string | null;
@@ -45,8 +50,39 @@ export interface OrderResponse {
   paymentStatus: string;
   createdAt: Date;
   updatedAt: Date;
-  orderItems: OrderItemResponse[];
-  userId?: string; // SE REGISTRATO
+  orderItems: UserOrderItemResponse[];
+  userId?: string;
+}
+
+// ============== TIPI PER ADMIN (CON filePath) ==============
+
+export interface AdminOrderItemResponse {
+  id: string;
+  quantity: number;
+  price: number;
+  productId: string | null;
+  product: {
+    id: string;
+    name: string;
+    description: string | null;
+    fileName: string | null;
+    filePath: string | null; // Solo admin possono vedere i percorsi dei file
+  } | null;
+}
+
+export interface AdminOrderResponse {
+  id: string;
+  customerEmail: string;
+  customerFirstName: string | null;
+  customerLastName: string | null;
+  total: number;
+  status: string;
+  paymentProvider: string | null;
+  paymentStatus: string;
+  createdAt: Date;
+  updatedAt: Date;
+  orderItems: AdminOrderItemResponse[];
+  userId?: string;
   user?: {
     id: string;
     firstName: string | null;
@@ -54,6 +90,14 @@ export interface OrderResponse {
     email: string;
   };
 }
+
+// ============== ALIAS PER COMPATIBILITÀ ==============
+
+// Per mantenere compatibilità con il codice esistente
+export type OrderItemResponse = AdminOrderItemResponse;
+export type OrderResponse = AdminOrderResponse;
+
+// ============== RESPONSE INTERFACES ==============
 
 export interface OrderListResponse {
   success: boolean;
@@ -67,10 +111,28 @@ export interface OrderListResponse {
   };
 }
 
+export interface UserOrderListResponse {
+  success: boolean;
+  message: string;
+  orders: UserOrderResponse[];
+  total: number;
+  pagination?: {
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
+}
+
 export interface OrderDetailResponse {
   success: boolean;
   message: string;
   order: OrderResponse;
+}
+
+export interface UserOrderDetailResponse {
+  success: boolean;
+  message: string;
+  order: UserOrderResponse;
 }
 
 export interface CreateOrderResponse {
@@ -86,6 +148,8 @@ export interface CreateOrderResponse {
   displayTotal?: number;
   exchangeRate?: number;
 }
+
+// ============== UTILITY INTERFACES ==============
 
 export interface OrderFilters {
   search?: string;
@@ -113,34 +177,8 @@ export interface OrderItemData {
   price: number;
 }
 
-// TIPI PRISMA SPECIFICI PER I CONTROLLER
-export type OrderWithDetails = Prisma.OrderGetPayload<{
-  include: {
-    orderItems: {
-      include: {
-        product: {
-          select: {
-            id: true;
-            name: true;
-            description: true;
-            fileName: true;
-            filePath?: true;
-          };
-        };
-      };
-    };
-    user: {
-      select: {
-        id: true;
-        firstName: true;
-        lastName: true;
-        email: true;
-      };
-    };
-  };
-}>;
+// ============== TIPI PRISMA - ADMIN (CON filePath) ==============
 
-// TIPO PER ADMIN CON PIÙ DETTAGLI
 export type OrderWithAdminDetails = Prisma.OrderGetPayload<{
   include: {
     orderItems: {
@@ -151,7 +189,7 @@ export type OrderWithAdminDetails = Prisma.OrderGetPayload<{
             name: true;
             description: true;
             fileName: true;
-            filePath: true;
+            filePath: true; // Admin può vedere i percorsi
           };
         };
       };
@@ -167,7 +205,8 @@ export type OrderWithAdminDetails = Prisma.OrderGetPayload<{
   };
 }>;
 
-// TIPO PER USER ORDERS (SENZA FILEPATH)
+// ============== TIPI PRISMA - USER (SENZA filePath) ==============
+
 export type OrderWithUserDetails = Prisma.OrderGetPayload<{
   include: {
     orderItems: {
@@ -178,10 +217,52 @@ export type OrderWithUserDetails = Prisma.OrderGetPayload<{
             name: true;
             description: true;
             fileName: true;
-            // NO filePath per utenti normali
+            // NO filePath - sicurezza per utenti normali
           };
         };
       };
     };
   };
 }>;
+
+// ============== TIPI PRISMA - GENERAL (CON filePath per admin) ==============
+
+export type OrderWithDetails = Prisma.OrderGetPayload<{
+  include: {
+    orderItems: {
+      include: {
+        product: {
+          select: {
+            id: true;
+            name: true;
+            description: true;
+            fileName: true;
+            filePath: true; // Per funzioni admin
+          };
+        };
+      };
+    };
+    user: {
+      select: {
+        id: true;
+        firstName: true;
+        lastName: true;
+        email: true;
+      };
+    };
+  };
+}>;
+
+// ============== HELPER TYPE GUARDS ==============
+
+export const isAdminOrder = (
+  order: UserOrderResponse | AdminOrderResponse
+): order is AdminOrderResponse => {
+  return "user" in order;
+};
+
+export const hasFilePath = (
+  item: UserOrderItemResponse | AdminOrderItemResponse
+): item is AdminOrderItemResponse => {
+  return item.product !== null && "filePath" in item.product;
+};

@@ -12,13 +12,163 @@ const transporter = nodemailer.createTransport({
   },
 });
 
+// EMAIL RESET
+export const sendPasswordResetEmail = async (
+  email: string,
+  firstName: string,
+  resetToken: string
+): Promise<void> => {
+  const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
+
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <title>Reset Password - Digital Store</title>
+    </head>
+    <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+      <div style="background-color: #f8f9fa; padding: 30px; border-radius: 10px;">
+        <h1 style="color: #333; text-align: center;">Reset Your Password</h1>
+        
+        <p>Hi ${firstName},</p>
+        
+        <p>You requested to reset your password for your Digital Store account. Click the button below to set a new password:</p>
+        
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${resetUrl}" 
+             style="background-color: #007bff; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block;">
+            Reset Password
+          </a>
+        </div>
+        
+        <p><strong>This link will expire in 1 hour.</strong></p>
+        
+        <p>If you didn't request this password reset, you can safely ignore this email.</p>
+        
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+        <p style="color: #666; font-size: 14px;">
+          If the button doesn't work, copy and paste this link in your browser:<br>
+          <a href="${resetUrl}">${resetUrl}</a>
+        </p>
+      </div>
+    </body>
+    </html>
+  `;
+
+  await transporter.sendMail({
+    from: process.env.EMAIL_USER,
+    to: email,
+    subject: "Reset Your Password - Digital Store",
+    html: htmlContent,
+  });
+};
+
+// VERIFICA EMAIL
+export const sendEmailVerificationEmail = async (
+  email: string,
+  firstName: string,
+  verificationToken: string
+): Promise<void> => {
+  const verificationUrl = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
+
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <title>Verify Your Email - Digital Store</title>
+    </head>
+    <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+      <div style="background-color: #f8f9fa; padding: 30px; border-radius: 10px;">
+        <h1 style="color: #333; text-align: center;">Welcome to Digital Store!</h1>
+        
+        <p>Hi ${firstName},</p>
+        
+        <p>Thank you for registering with Digital Store! To complete your registration, please verify your email address:</p>
+        
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${verificationUrl}" 
+             style="background-color: #28a745; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block;">
+            Verify Email
+          </a>
+        </div>
+        
+        <p><strong>This link will expire in 7 days.</strong></p>
+        
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+        <p style="color: #666; font-size: 14px;">
+          If the button doesn't work, copy and paste this link in your browser:<br>
+          <a href="${verificationUrl}">${verificationUrl}</a>
+        </p>
+      </div>
+    </body>
+    </html>
+  `;
+
+  await transporter.sendMail({
+    from: process.env.EMAIL_USER,
+    to: email,
+    subject: "Verify Your Email - Digital Store",
+    html: htmlContent,
+  });
+};
+
+// EMAIL NOTIFICA CAMBIO PASSOWRD
+export const sendPasswordChangedNotificationEmail = async (
+  email: string,
+  firstName: string
+): Promise<void> => {
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <title>Password Changed - Digital Store</title>
+    </head>
+    <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+      <div style="background-color: #f8f9fa; padding: 30px; border-radius: 10px;">
+        <h1 style="color: #333; text-align: center;">Password Changed Successfully</h1>
+        
+        <p>Hi ${firstName},</p>
+        
+        <p>This email confirms that your Digital Store account password was successfully changed on ${new Date().toLocaleString()}.</p>
+        
+        <p><strong>If you didn't make this change:</strong></p>
+        <ul>
+          <li>Someone may have accessed your account</li>
+          <li>Contact our support immediately</li>
+          <li>Consider changing your password again</li>
+        </ul>
+        
+        <p>If you made this change, no further action is needed.</p>
+        
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+        <p style="color: #666; font-size: 14px;">
+          For security reasons, this notification was sent to all email addresses associated with your account.
+        </p>
+      </div>
+    </body>
+    </html>
+  `;
+
+  await transporter.sendMail({
+    from: process.env.EMAIL_USER,
+    to: email,
+    subject: "Password Changed - Digital Store",
+    html: htmlContent,
+  });
+};
+
 // EMAIL CONFERMA PROTOTIPO
 const generateOrderConfirmationHTML = (order: OrderResponse) => {
   const orderItemsHTML = order.orderItems
     .map(
       (item) => `
     <tr style="border-bottom: 1px solid #eee;">
-      <td style="padding: 12px 8px; font-weight: 500;">${item.product.name}</td>
+<td style="padding: 12px 8px; font-weight: 500;">${
+        item.product?.name || "Product not available"
+      }</td>
       <td style="padding: 12px 8px; text-align: center;">${item.quantity}</td>
       <td style="padding: 12px 8px; text-align: right;">€${item.price.toFixed(
         2

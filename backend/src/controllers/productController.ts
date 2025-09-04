@@ -22,6 +22,14 @@ declare global {
   }
 }
 
+function generateSlug(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-zA-Z0-9\s]/g, "")
+    .replace(/\s+/g, "-")
+    .trim();
+}
+
 const getStringParam = (param: unknown): string | undefined => {
   return typeof param === "string" ? param : undefined;
 };
@@ -282,6 +290,7 @@ export const createProduct = async (req: Request, res: Response) => {
       price,
       fileName,
       filePath,
+      categoryId,
     }: CreateProductRequest = req.body;
 
     // VALIDAZIONE CAMPI
@@ -320,18 +329,55 @@ export const createProduct = async (req: Request, res: Response) => {
     const rawProduct = await prisma.product.create({
       data: {
         name: name.trim(),
+        slug: generateSlug(name),
         description: description?.trim() || null,
         price: numPrice,
         fileName: fileName.trim(),
         filePath: filePath.trim(),
         isActive: true,
+        ...(categoryId && { category: { connect: { id: categoryId } } }),
+        stock: 0,
+        lowStockThreshold: 5,
+        trackInventory: false,
+        allowBackorder: false,
+        viewCount: 0,
+        downloadCount: 0,
+        rating: 0,
+        reviewCount: 0,
+        isFeatured: false,
+        isDigital: true,
       },
     });
 
-    // CONVERTIRE DECIMAL IN NUMBER
     const newProduct: ProductResponse = {
-      ...rawProduct,
+      id: rawProduct.id,
+      name: rawProduct.name,
+      slug: rawProduct.slug,
+      description: rawProduct.description,
+      shortDescription: rawProduct.shortDescription,
       price: rawProduct.price.toNumber(),
+      originalPrice: rawProduct.originalPrice
+        ? rawProduct.originalPrice.toNumber()
+        : null,
+      fileName: rawProduct.fileName,
+      filePath: rawProduct.filePath,
+      createdAt: rawProduct.createdAt,
+      updatedAt: rawProduct.updatedAt,
+      publishedAt: rawProduct.publishedAt,
+      stock: rawProduct.stock,
+      lowStockThreshold: rawProduct.lowStockThreshold,
+      trackInventory: rawProduct.trackInventory,
+      allowBackorder: rawProduct.allowBackorder,
+      viewCount: rawProduct.viewCount,
+      downloadCount: rawProduct.downloadCount,
+      rating: rawProduct.rating.toNumber(),
+      reviewCount: rawProduct.reviewCount,
+      isActive: rawProduct.isActive,
+      isFeatured: rawProduct.isFeatured,
+      isDigital: rawProduct.isDigital,
+      seoTitle: rawProduct.seoTitle,
+      seoDescription: rawProduct.seoDescription,
+      categoryId: rawProduct.categoryId,
     };
 
     res.status(201).json({
@@ -341,7 +387,6 @@ export const createProduct = async (req: Request, res: Response) => {
     } as ProductMutationResponse);
   } catch (error: unknown) {
     console.error("Create product error:", error);
-
     res.status(500).json({
       success: false,
       message: "Failed to create product",
@@ -373,6 +418,7 @@ export const updateProduct = async (req: Request, res: Response) => {
 
     if (updateData.name !== undefined) {
       data.name = updateData.name.trim();
+      data.slug = generateSlug(updateData.name);
     }
     if (updateData.description !== undefined) {
       data.description = updateData.description?.trim() || null;
@@ -396,12 +442,31 @@ export const updateProduct = async (req: Request, res: Response) => {
     if (updateData.isActive !== undefined) {
       data.isActive = updateData.isActive;
     }
+    if (updateData.categoryId !== undefined) {
+      if (updateData.categoryId === null) {
+        data.category = { disconnect: true };
+      } else {
+        data.category = { connect: { id: updateData.categoryId } };
+      }
+    }
+    if (updateData.stock !== undefined) {
+      data.stock = updateData.stock;
+    }
+    if (updateData.lowStockThreshold !== undefined) {
+      data.lowStockThreshold = updateData.lowStockThreshold;
+    }
+    if (updateData.trackInventory !== undefined) {
+      data.trackInventory = updateData.trackInventory;
+    }
+    if (updateData.allowBackorder !== undefined) {
+      data.allowBackorder = updateData.allowBackorder;
+    }
 
     // CONTROLLO NOME DUPLICATO
     if (updateData.name && updateData.name.trim() !== existingProduct.name) {
       const duplicateProduct = await prisma.product.findFirst({
         where: {
-          name: updateData.name.trim(), // Usa updateData.name, non data.name
+          name: updateData.name.trim(),
           isActive: true,
           id: { not: id },
         },
@@ -421,10 +486,35 @@ export const updateProduct = async (req: Request, res: Response) => {
       data,
     });
 
-    // CONVERTIRE DECIMAL IN NUMBER
     const updatedProduct: ProductResponse = {
-      ...rawUpdatedProduct,
+      id: rawUpdatedProduct.id,
+      name: rawUpdatedProduct.name,
+      slug: rawUpdatedProduct.slug,
+      description: rawUpdatedProduct.description,
+      shortDescription: rawUpdatedProduct.shortDescription,
       price: rawUpdatedProduct.price.toNumber(),
+      originalPrice: rawUpdatedProduct.originalPrice
+        ? rawUpdatedProduct.originalPrice.toNumber()
+        : null,
+      fileName: rawUpdatedProduct.fileName,
+      filePath: rawUpdatedProduct.filePath,
+      createdAt: rawUpdatedProduct.createdAt,
+      updatedAt: rawUpdatedProduct.updatedAt,
+      publishedAt: rawUpdatedProduct.publishedAt,
+      stock: rawUpdatedProduct.stock,
+      lowStockThreshold: rawUpdatedProduct.lowStockThreshold,
+      trackInventory: rawUpdatedProduct.trackInventory,
+      allowBackorder: rawUpdatedProduct.allowBackorder,
+      viewCount: rawUpdatedProduct.viewCount,
+      downloadCount: rawUpdatedProduct.downloadCount,
+      rating: rawUpdatedProduct.rating.toNumber(),
+      reviewCount: rawUpdatedProduct.reviewCount,
+      isActive: rawUpdatedProduct.isActive,
+      isFeatured: rawUpdatedProduct.isFeatured,
+      isDigital: rawUpdatedProduct.isDigital,
+      seoTitle: rawUpdatedProduct.seoTitle,
+      seoDescription: rawUpdatedProduct.seoDescription,
+      categoryId: rawUpdatedProduct.categoryId,
     };
 
     res.json({
@@ -434,7 +524,6 @@ export const updateProduct = async (req: Request, res: Response) => {
     } as ProductMutationResponse);
   } catch (error: unknown) {
     console.error("Update product error:", error);
-
     res.status(500).json({
       success: false,
       message: "Failed to update product",
@@ -540,8 +629,34 @@ export const getProductsAdmin = async (req: Request, res: Response) => {
 
     // CONVERTIRE DECIMAL IN NUMBER
     const products: ProductResponse[] = rawProducts.map((product) => ({
-      ...product,
+      id: product.id,
+      name: product.name,
+      slug: product.slug,
+      description: product.description,
+      shortDescription: product.shortDescription,
       price: product.price.toNumber(),
+      originalPrice: product.originalPrice
+        ? product.originalPrice.toNumber()
+        : null,
+      fileName: product.fileName,
+      filePath: product.filePath,
+      createdAt: product.createdAt,
+      updatedAt: product.updatedAt,
+      publishedAt: product.publishedAt,
+      stock: product.stock,
+      lowStockThreshold: product.lowStockThreshold,
+      trackInventory: product.trackInventory,
+      allowBackorder: product.allowBackorder,
+      viewCount: product.viewCount,
+      downloadCount: product.downloadCount,
+      rating: product.rating.toNumber(),
+      reviewCount: product.reviewCount,
+      isActive: product.isActive,
+      isFeatured: product.isFeatured,
+      isDigital: product.isDigital,
+      seoTitle: product.seoTitle,
+      seoDescription: product.seoDescription,
+      categoryId: product.categoryId,
     }));
 
     res.json({
@@ -558,7 +673,6 @@ export const getProductsAdmin = async (req: Request, res: Response) => {
     });
   } catch (error: unknown) {
     console.error("Get admin products error:", error);
-
     res.status(500).json({
       success: false,
       message: "Failed to get products",

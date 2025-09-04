@@ -1,16 +1,22 @@
+// src/controllers/orderController.ts
 import { Request, Response } from "express";
 import { PrismaClient, Prisma } from "../generated/prisma";
 import {
   CreateOrderRequest,
-  OrderResponse,
+  AdminOrderResponse,
+  UserOrderResponse,
   OrderListResponse,
+  UserOrderListResponse,
   OrderDetailResponse,
+  UserOrderDetailResponse,
   CreateOrderResponse,
   OrderItemData,
   UpdateOrderStatusRequest,
   OrderWithDetails,
   OrderWithAdminDetails,
   OrderWithUserDetails,
+  // Alias per compatibilità
+  OrderResponse,
 } from "../types/order";
 import { stripe } from "../services/stripe";
 import { paypalService } from "../services/paypal";
@@ -22,10 +28,11 @@ import {
 
 const prisma = new PrismaClient();
 
-// UTILITY CONV TO RESP
+// ============== UTILITY FUNCTIONS ==============
+
 const formatAdminOrderResponse = (
   order: OrderWithAdminDetails
-): OrderResponse => ({
+): AdminOrderResponse => ({
   id: order.id,
   customerEmail: order.customerEmail,
   customerFirstName: order.customerFirstName,
@@ -45,7 +52,15 @@ const formatAdminOrderResponse = (
     quantity: item.quantity,
     price: item.price.toNumber(),
     productId: item.productId,
-    product: item.product,
+    product: item.product
+      ? {
+          id: item.product.id,
+          name: item.product.name,
+          description: item.product.description,
+          fileName: item.product.fileName,
+          filePath: item.product.filePath, // Admin può vedere filePath
+        }
+      : null,
   })),
   userId: order.userId || undefined,
   user: order.user
@@ -60,7 +75,7 @@ const formatAdminOrderResponse = (
 
 const formatUserOrderResponse = (
   order: OrderWithUserDetails
-): OrderResponse => ({
+): UserOrderResponse => ({
   id: order.id,
   customerEmail: order.customerEmail,
   customerFirstName: order.customerFirstName,
@@ -80,49 +95,56 @@ const formatUserOrderResponse = (
     quantity: item.quantity,
     price: item.price.toNumber(),
     productId: item.productId,
-    product: item.product,
+    product: item.product
+      ? {
+          id: item.product.id,
+          name: item.product.name,
+          description: item.product.description,
+          fileName: item.product.fileName,
+          // NO filePath per sicurezza - utenti normali non devono vedere percorsi
+        }
+      : null,
   })),
   userId: order.userId || undefined,
 });
 
-const formatOrderResponse = (order: OrderWithDetails): OrderResponse => ({
-  id: order.id,
-  customerEmail: order.customerEmail,
-  customerFirstName: order.customerFirstName,
-  customerLastName: order.customerLastName,
-  total: order.total.toNumber(),
-  status: order.status,
-  paymentProvider: order.stripePaymentIntentId
-    ? "STRIPE"
-    : order.paypalOrderId
-    ? "PAYPAL"
-    : null,
-  paymentStatus: order.paymentStatus,
-  createdAt: order.createdAt,
-  updatedAt: order.updatedAt,
-  orderItems: order.orderItems.map((item) => ({
-    id: item.id,
-    quantity: item.quantity,
-    price: item.price.toNumber(),
-    productId: item.productId,
-    product: item.product,
-  })),
-  userId: order.userId || undefined,
-  user: order.user
-    ? {
-        id: order.user.id,
-        firstName: order.user.firstName,
-        lastName: order.user.lastName,
-        email: order.user.email,
-      }
-    : undefined,
-});
+// Funzione generica che decide il formato basato sul ruolo utente
+const formatOrderResponse = (
+  order: OrderWithDetails,
+  isAdmin: boolean = false
+): AdminOrderResponse => {
+  if (isAdmin) {
+    return formatAdminOrderResponse(order as OrderWithAdminDetails);
+  }
+
+  // Per gli utenti normali, nascondi filePath
+  return {
+    ...formatAdminOrderResponse(order as OrderWithAdminDetails),
+    orderItems: order.orderItems.map((item) => ({
+      id: item.id,
+      quantity: item.quantity,
+      price: item.price.toNumber(),
+      productId: item.productId,
+      product: item.product
+        ? {
+            id: item.product.id,
+            name: item.product.name,
+            description: item.product.description,
+            fileName: item.product.fileName,
+            filePath: isAdmin ? item.product.filePath : null, // Condizionale per sicurezza
+          }
+        : null,
+    })),
+  };
+};
 
 const getStringParam = (param: unknown): string | undefined => {
   return typeof param === "string" ? param : undefined;
 };
 
-// LISTA ORDINI  - ADMIN
+// ============== CONTROLLER FUNCTIONS ==============
+
+// LISTA ORDINI - ADMIN
 // GET /api/admin/orders
 export const getOrdersAdmin = async (req: Request, res: Response) => {
   try {
@@ -234,8 +256,7 @@ export const getOrdersAdmin = async (req: Request, res: Response) => {
       prisma.order.count({ where }),
     ]);
 
-    // USA LA FUNZIONE UTILITY
-    const ordersResponse: OrderResponse[] = orders.map(
+    const ordersResponse: AdminOrderResponse[] = orders.map(
       formatAdminOrderResponse
     );
 
@@ -262,7 +283,6 @@ export const getOrdersAdmin = async (req: Request, res: Response) => {
 
 // CREAZIONE ORDINE
 // POST /api/orders
-
 export const createOrder = async (req: Request, res: Response) => {
   try {
     const {
@@ -325,7 +345,7 @@ export const createOrder = async (req: Request, res: Response) => {
       });
     }
 
-    // VERIFICA DISPONIBILITà DEL PRODOTTO
+    // VERIFICA DISPONIBILITÀ DEL PRODOTTO
     const productIds = items.map((item) => item.productId);
     const products = await prisma.product.findMany({
       where: {
@@ -402,7 +422,7 @@ export const createOrder = async (req: Request, res: Response) => {
         });
       }
 
-      // DOPO DI CHE CALCOLA LO SCONTO
+      // CALCOLA LO SCONTO
       if (discountCodeRecord.discountType === "PERCENTAGE") {
         discount =
           (subtotal * discountCodeRecord.discountValue.toNumber()) / 100;
@@ -410,7 +430,7 @@ export const createOrder = async (req: Request, res: Response) => {
         discount = discountCodeRecord.discountValue.toNumber();
       }
 
-      // LO SCONTO NON PUO SUPERARE IL TOTALE DELL'ORDINE wtf?
+      // LO SCONTO NON PUÒ SUPERARE IL TOTALE DELL'ORDINE
       discount = Math.min(discount, subtotal);
     }
 
@@ -444,8 +464,9 @@ export const createOrder = async (req: Request, res: Response) => {
       });
     }
 
-    // VERIFICHIAMO SE L'UTENTE è REGISTRATO
+    // VERIFICA SE L'UTENTE È REGISTRATO
     const userId = req.user?.id || null;
+    const isAdmin = req.user?.role === "ADMIN";
 
     // CREAZIONE ORDINE
     const result = await prisma.$transaction(async (tx) => {
@@ -485,7 +506,7 @@ export const createOrder = async (req: Request, res: Response) => {
         };
       }
 
-      // CREA ORDINE
+      // CREA ORDINE - Solo admin vede filePath
       const order = await tx.order.create({
         data: {
           customerEmail: customerEmail.toLowerCase(),
@@ -513,6 +534,7 @@ export const createOrder = async (req: Request, res: Response) => {
                   name: true,
                   description: true,
                   fileName: true,
+                  filePath: isAdmin,
                 },
               },
             },
@@ -528,6 +550,7 @@ export const createOrder = async (req: Request, res: Response) => {
             : false,
         },
       });
+
       console.log(
         `Order created: ${order.id}, Provider: ${paymentProvider}, Currency: ${currency}, Amount: ${displayTotal}, Exchange Rate: ${exchangeRate}`
       );
@@ -540,7 +563,6 @@ export const createOrder = async (req: Request, res: Response) => {
         });
       }
 
-      // CORREGGI IL RETURN - usa paymentData invece di paymentIntent
       return {
         order,
         clientSecret: paymentData.clientSecret,
@@ -550,7 +572,7 @@ export const createOrder = async (req: Request, res: Response) => {
 
     // INVIA EMAIL DI CONFERMA
     const { order, clientSecret, approvalUrl } = result;
-    const orderResponse = formatOrderResponse(order);
+    const orderResponse = formatOrderResponse(order, isAdmin);
 
     try {
       await sendOrderConfirmation(orderResponse);
@@ -641,7 +663,9 @@ export const getUserOrders = async (req: Request, res: Response) => {
       }),
     ]);
 
-    const ordersResponse: OrderResponse[] = orders.map(formatUserOrderResponse);
+    const ordersResponse: UserOrderResponse[] = orders.map(
+      formatUserOrderResponse
+    );
 
     res.json({
       success: true,
@@ -653,7 +677,7 @@ export const getUserOrders = async (req: Request, res: Response) => {
         limit: limitNum,
         totalPages: Math.ceil(total / limitNum),
       },
-    } as OrderListResponse);
+    } as UserOrderListResponse);
   } catch (error: unknown) {
     console.error("Get user orders error:", error);
 
@@ -670,6 +694,10 @@ export const getOrderById = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
+    // CONTROLLO AUTORIZZAZIONI
+    const isOwner = req.user && req.user.id;
+    const isAdmin = req.user && req.user.role === "ADMIN";
+
     const order = await prisma.order.findUnique({
       where: { id },
       include: {
@@ -681,6 +709,7 @@ export const getOrderById = async (req: Request, res: Response) => {
                 name: true,
                 description: true,
                 fileName: true,
+                filePath: isAdmin,
               },
             },
           },
@@ -703,18 +732,17 @@ export const getOrderById = async (req: Request, res: Response) => {
       });
     }
 
-    // CONTROLLO LE AUTORZZAZIONI
-    const isOwner = req.user && order.userId === req.user.id;
-    const isAdmin = req.user && req.user.role === "ADMIN";
+    // VERIFICA AUTORIZZAZIONI
+    const isOrderOwner = req.user && order.userId === req.user.id;
 
-    if (!isOwner && !isAdmin) {
+    if (!isOrderOwner && !isAdmin) {
       return res.status(403).json({
         success: false,
         message: "Access denied",
       });
     }
 
-    const orderResponse = formatOrderResponse(order);
+    const orderResponse = formatOrderResponse(order, isAdmin);
 
     res.json({
       success: true,
@@ -750,7 +778,7 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
 
     const previousStatus = order.status;
 
-    // PREPARIAMO I DATI PER L'UPDATE
+    // PREPARA I DATI PER L'UPDATE
     const data: Prisma.OrderUpdateInput = {};
 
     if (updateData.status) data.status = updateData.status;
@@ -771,6 +799,7 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
                 name: true,
                 description: true,
                 fileName: true,
+                filePath: true,
               },
             },
           },
@@ -786,7 +815,7 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
       },
     });
 
-    const orderResponse = formatOrderResponse(updatedOrder);
+    const orderResponse = formatOrderResponse(updatedOrder, true);
 
     // INVIA EMAIL SE STATUS CAMBIATO
     if (updateData.status && updateData.status !== previousStatus) {
