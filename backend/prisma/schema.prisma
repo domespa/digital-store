@@ -9,7 +9,8 @@ datasource db {
 }
 
 
-//------------------------------ USERS
+//------------------------------ USERS --------------------
+//-----------------------------------------//
 model User {
   id String @id @default(cuid())  // USIAMO STRINGA IN ID PER MOTIVI DI SICUREZZA, ID NUMERICI SONO FACILMENTE RECUPERABILI - IL DEFAULT GENERA ID AUTOMATICI ALFANUMERICI
   email String @unique  // NESSUNA DUPLICAZIONE
@@ -34,11 +35,12 @@ model User {
   reviewReports ReviewReport[]
   handledReports ReviewReport[] @relation("ReportHandler")
   moderationActions ReviewModerationLog[] @relation("ReviewModerator")
+    wishlists Wishlist[]
 
   @@map("users") // NOME TABELLA
 }
 
-//---------- PRODOTTI e CATEGORIE --------------------
+//---------- PRODOTTI, CATEGORIE E LISTA PREFERITI--------------------
 //-----------------------------------------//
 model Product{
   id String @id @default(cuid())
@@ -85,6 +87,8 @@ model Product{
   images ProductImage[]
   tags Tag[]
   reviews Review[] 
+  wishlists Wishlist[]
+  wishlistCount Int @default(0)
 
   @@map("products")
 }
@@ -155,6 +159,21 @@ model ProductImage {
   createdAt DateTime @default(now())
 
   @@map("product_images")
+}
+
+model Wishlist {
+  id String @id @default(cuid())
+  userId String
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, productId], name: "unique_user_product_wishlist")
+  @@index([userId]
+  @@index([productId]))
+  @@map("wishlists")
 }
 
 //---------- REVIEW VARIE ED EVENTUALI -------
