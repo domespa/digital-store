@@ -9,7 +9,7 @@ datasource db {
 }
 
 
-// USERS
+//------------------------------ USERS
 model User {
   id String @id @default(cuid())  // USIAMO STRINGA IN ID PER MOTIVI DI SICUREZZA, ID NUMERICI SONO FACILMENTE RECUPERABILI - IL DEFAULT GENERA ID AUTOMATICI ALFANUMERICI
   email String @unique  // NESSUNA DUPLICAZIONE
@@ -24,16 +24,22 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   createdProducts Product[] @relation("ProductCreator")
+
   // RELAZIONI
   orders Order[]
   passwordResetTokens PasswordResetToken[]
   emailVerificationTokens EmailVerificationToken[]
   reviews Review[]
+  reviewHelpfulVotes ReviewHelpfulVote[]
+  reviewReports ReviewReport[]
+  handledReports ReviewReport[] @relation("ReportHandler")
+  moderationActions ReviewModerationLog[] @relation("ReviewModerator")
 
   @@map("users") // NOME TABELLA
 }
 
-// PRODOTTI e CATEGORIE
+//---------- PRODOTTI e CATEGORIE --------------------
+//-----------------------------------------//
 model Product{
   id String @id @default(cuid())
   name String
@@ -57,7 +63,9 @@ model Product{
   viewCount Int @default(0) 
   downloadCount Int @default(0) 
   rating Decimal @default(0) @db.Decimal(3, 2) 
+  averageRating Float @default(0)
   reviewCount Int @default(0) 
+  ratingDistribution Json? // PER PERCENTUALI
 
   isActive Boolean @default(true)
   isFeatured Boolean @default(false) 
@@ -79,26 +87,6 @@ model Product{
   reviews Review[] 
 
   @@map("products")
-}
-
-model Review {
-  id String @id @default(cuid())
-  productId String
-  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-  userId String?
-  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
-  customerEmail String // Per ospiti
-  customerName String
-  rating Int // 1-5
-  title String?
-  comment String?
-  isVerified Boolean @default(false) 
-  isApproved Boolean @default(false) 
-  helpfulCount Int @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@map("reviews")
 }
 
 model Category {
@@ -169,7 +157,112 @@ model ProductImage {
   @@map("product_images")
 }
 
-// ORDINI
+//---------- REVIEW VARIE ED EVENTUALI -------
+//-----------------------------------------//
+
+model Review {
+  id String @id @default(cuid())
+  productId String
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId String?
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  customerEmail String // PER OSPITI
+  customerName String
+  rating Int // 1-5 STELLINE
+  title String?
+  content String?
+  isVerified Boolean @default(false) 
+  isApproved Boolean @default(false) 
+  helpfulCount Int @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  isPinned Boolean @default(false) // PER COMMENTI IMPORTANTI
+  reportCount Int @default(0)
+  moderatorNotes String?
+
+  orderId String? // COLLEGAMENTO ALL'ORDINE
+  order Order? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  // RELAZIONI
+  helpfulVotes ReviewHelpfulVote[]
+  reports ReviewReport[]
+  adminActions ReviewModerationLog[]
+
+  @@unique([userId, productId], name: "unique_user_product_review") // UNA RECENSIONE PER UTENTE PER PRODOTTO
+  @@index([productId, isApproved])
+  @@index([userId])
+  @@index([createdAt])
+  @@index([rating])
+  @@index([isVerified])
+  @@map("reviews")
+}
+
+model ReviewHelpfulVote {
+  id String @id @default(cuid())
+  userId String?
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reviewId String
+  review Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  isHelpful Boolean 
+  ipAddress String? // PER VOTI ANONIMI
+  createdAt DateTime @default(now())
+  
+  @@unique([userId, reviewId], name: "unique_user_review_vote") // UN VOTO PER UTENTE PER RECENSIONE
+  @@unique([ipAddress, reviewId], name: "unique_ip_review_vote") // UN VOTO PER IP PER RECENSIONE (OSPITI)
+  @@map("review_helpful_votes")
+}
+
+model ReviewReport {
+  id String @id @default(cuid())
+  reason ReportReason
+  description String?
+  status ReportStatus @default(PENDING)
+  
+  userId String?
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  reviewId String
+  review Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  
+  reporterEmail String? // PER SEGNALAZIONI ANONIME
+  reporterName String? // PER SEGNALAZIONI ANONIME
+  
+  // GESTIONE ADMIN
+  handledBy String?
+  handler User? @relation("ReportHandler", fields: [handledBy], references: [id])
+  handledAt DateTime?
+  adminNotes String?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([status])
+  @@index([reviewId])
+  @@map("review_reports")
+}
+
+model ReviewModerationLog {
+  id String @id @default(cuid())
+  action ModerationAction
+  reason String?
+  notes String?
+  
+  reviewId String
+  review Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  
+  moderatorId String
+  moderator User @relation("ReviewModerator", fields: [moderatorId], references: [id])
+  
+  createdAt DateTime @default(now())
+  
+  @@index([reviewId])
+  @@index([moderatorId])
+  @@map("review_moderation_logs")
+}
+
+//---------- ORDINI ED EVENTUALI -------
+//-----------------------------------------//
 model Order {
   id String @id @default(cuid())
 
@@ -199,6 +292,7 @@ model Order {
   userId String?
   user User? @relation(fields: [userId], references: [id])
   orderItems OrderItem[]
+  reviews Review[]
 
   @@map("orders")
 }
@@ -267,7 +361,8 @@ model EmailQueue {
   @@map("email_queue")
 }
 
-
+//---------- VERIFICHE ACCOUNT-------
+//-----------------------------------------//
 // RESET PASSWORD
 model PasswordResetToken {
   id String @id @default(cuid())
@@ -338,4 +433,31 @@ enum EmailStatus {
   PENDING
   SENT
   FAILED
+}
+
+enum ReportReason {
+  SPAM
+  INAPPROPRIATE_CONTENT
+  FAKE_REVIEW
+  OFFENSIVE_LANGUAGE
+  IRRELEVANT
+  COPYRIGHT_VIOLATION
+  OTHER
+}
+
+enum ReportStatus {
+  PENDING
+  UNDER_REVIEW
+  RESOLVED
+  DISMISSED
+}
+
+enum ModerationAction {
+  APPROVED
+  REJECTED
+  PINNED
+  UNPINNED
+  EDITED
+  DELETED
+  RESTORED
 }

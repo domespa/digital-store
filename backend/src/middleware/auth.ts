@@ -128,4 +128,6 @@ export const requireAdmin = async (
   });
 };
 
+export const auth = authenticateToken;
+export const adminAuth = requireAdmin;
 export const requireUser = authenticateToken;

@@ -328,6 +328,7 @@ export const deleteCategory = async (req: Request, res: Response) => {
       });
     }
 
+    // Gestione prodotti nella categoria
     if (category.products.length > 0) {
       if (moveProductsTo) {
         const targetCategory = await prisma.category.findUnique({
@@ -346,13 +347,35 @@ export const deleteCategory = async (req: Request, res: Response) => {
           data: { categoryId: moveProductsTo },
         });
       } else {
+        // Rimuovi categoria dai prodotti (categoryId = null)
         await prisma.product.updateMany({
           where: { categoryId: id },
           data: { categoryId: null },
         });
       }
     }
-  } catch (error) {}
+
+    // Elimina la categoria
+    await prisma.category.delete({
+      where: { id },
+    });
+
+    res.json({
+      success: true,
+      message: "Category deleted successfully",
+      data: {
+        deletedCategoryId: id,
+        productsAffected: category.products.length,
+        movedToCategory: moveProductsTo || null,
+      },
+    });
+  } catch (error) {
+    console.error("Delete category error:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to delete category",
+    });
+  }
 };
 
 // CATEGORIE POPOLARI

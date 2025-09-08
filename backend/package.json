@@ -32,7 +32,9 @@
     "paypal-rest-sdk": "^1.8.1",
     "sharp": "^0.34.3",
     "socket.io": "^4.7.4",
-    "stripe": "^14.25.0"
+    "stripe": "^14.25.0",
+    "bad-words": "^3.0.4",
+    "@types/express-rate-limit": "^6.0.0"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

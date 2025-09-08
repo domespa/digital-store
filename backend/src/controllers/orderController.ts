@@ -8,14 +8,12 @@ import {
   OrderListResponse,
   UserOrderListResponse,
   OrderDetailResponse,
-  UserOrderDetailResponse,
   CreateOrderResponse,
   OrderItemData,
   UpdateOrderStatusRequest,
   OrderWithDetails,
   OrderWithAdminDetails,
   OrderWithUserDetails,
-  // Alias per compatibilità
   OrderResponse,
 } from "../types/order";
 import { stripe } from "../services/stripe";
@@ -25,6 +23,8 @@ import {
   sendOrderConfirmation,
   sendOrderStatusUpdate,
 } from "../services/emailService";
+import { catchAsync } from "../utils/catchAsync";
+import { CustomError } from "../utils/customError";
 
 const prisma = new PrismaClient();
 
@@ -58,7 +58,7 @@ const formatAdminOrderResponse = (
           name: item.product.name,
           description: item.product.description,
           fileName: item.product.fileName,
-          filePath: item.product.filePath, // Admin può vedere filePath
+          filePath: item.product.filePath,
         }
       : null,
   })),
@@ -101,15 +101,14 @@ const formatUserOrderResponse = (
           name: item.product.name,
           description: item.product.description,
           fileName: item.product.fileName,
-          // NO filePath per sicurezza - utenti normali non devono vedere percorsi
         }
       : null,
   })),
   userId: order.userId || undefined,
 });
 
-// Funzione generica che decide il formato basato sul ruolo utente
-const formatOrderResponse = (
+// ESPORTATA per uso nel PaymentController
+export const formatOrderResponse = (
   order: OrderWithDetails,
   isAdmin: boolean = false
 ): AdminOrderResponse => {
@@ -117,7 +116,6 @@ const formatOrderResponse = (
     return formatAdminOrderResponse(order as OrderWithAdminDetails);
   }
 
-  // Per gli utenti normali, nascondi filePath
   return {
     ...formatAdminOrderResponse(order as OrderWithAdminDetails),
     orderItems: order.orderItems.map((item) => ({
@@ -131,7 +129,7 @@ const formatOrderResponse = (
             name: item.product.name,
             description: item.product.description,
             fileName: item.product.fileName,
-            filePath: isAdmin ? item.product.filePath : null, // Condizionale per sicurezza
+            filePath: isAdmin ? item.product.filePath : null,
           }
         : null,
     })),
@@ -146,8 +144,8 @@ const getStringParam = (param: unknown): string | undefined => {
 
 // LISTA ORDINI - ADMIN
 // GET /api/admin/orders
-export const getOrdersAdmin = async (req: Request, res: Response) => {
-  try {
+export const getOrdersAdmin = catchAsync(
+  async (req: Request, res: Response) => {
     const search = getStringParam(req.query.search);
     const status = getStringParam(req.query.status);
     const paymentStatus = getStringParam(req.query.paymentStatus);
@@ -158,46 +156,22 @@ export const getOrdersAdmin = async (req: Request, res: Response) => {
     const page = getStringParam(req.query.page) || "1";
     const limit = getStringParam(req.query.limit) || "20";
 
-    // VALIDAZIONI PARAMETRI
     const validSortFields = ["createdAt", "total", "status"];
     const validSortBy = validSortFields.includes(sortBy) ? sortBy : "createdAt";
     const validSortOrder =
       sortOrder === "asc" || sortOrder === "desc" ? sortOrder : "desc";
 
-    // FILTRI
     const where: Prisma.OrderWhereInput = {};
 
-    // RICERCA
     if (search) {
       where.OR = [
-        {
-          customerEmail: {
-            contains: search,
-            mode: "insensitive",
-          },
-        },
-        {
-          customerFirstName: {
-            contains: search,
-            mode: "insensitive",
-          },
-        },
-        {
-          customerLastName: {
-            contains: search,
-            mode: "insensitive",
-          },
-        },
-        {
-          id: {
-            contains: search,
-            mode: "insensitive",
-          },
-        },
+        { customerEmail: { contains: search, mode: "insensitive" } },
+        { customerFirstName: { contains: search, mode: "insensitive" } },
+        { customerLastName: { contains: search, mode: "insensitive" } },
+        { id: { contains: search, mode: "insensitive" } },
       ];
     }
 
-    // FILTRI CON TIPI
     if (status) {
       where.status = status as Prisma.EnumOrderStatusFilter;
     }
@@ -218,7 +192,6 @@ export const getOrdersAdmin = async (req: Request, res: Response) => {
       }
     }
 
-    // PAGINAZIONE
     const pageNum = Math.max(1, Number(page) || 1);
     const limitNum = Math.min(100, Math.max(1, Number(limit) || 20));
     const skip = (pageNum - 1) * limitNum;
@@ -271,435 +244,208 @@ export const getOrdersAdmin = async (req: Request, res: Response) => {
         totalPages: Math.ceil(total / limitNum),
       },
     } as OrderListResponse);
-  } catch (error: unknown) {
-    console.error("Get admin orders error:", error);
+  }
+);
 
-    res.status(500).json({
-      success: false,
-      message: "Failed to get orders",
+// CREAZIONE ORDINE (SEMPLIFICATO - senza logica pagamenti)
+// POST /api/orders
+export const createOrder = catchAsync(async (req: Request, res: Response) => {
+  const {
+    customerEmail,
+    customerFirstName,
+    customerLastName,
+    items,
+    discountCode,
+    paymentProvider = "STRIPE",
+    currency = "EUR",
+  }: CreateOrderRequest & {
+    paymentProvider?: "STRIPE" | "PAYPAL";
+    currency?: string;
+  } = req.body;
+
+  // VALIDAZIONI BASE
+  if (!customerEmail || !items || items.length === 0) {
+    throw new CustomError("Customer email and items are required", 400);
+  }
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(customerEmail)) {
+    throw new CustomError("Invalid email format", 400);
+  }
+
+  for (const item of items) {
+    if (!item.productId || !item.quantity || item.quantity <= 0) {
+      throw new CustomError(
+        "Each item must have productId and positive quantity",
+        400
+      );
+    }
+  }
+
+  const supportedCurrencies = currencyService
+    .getSupportedCurrencies()
+    .map((c) => c.code);
+  if (!supportedCurrencies.includes(currency)) {
+    throw new CustomError(`Currency ${currency} not supported`, 400);
+  }
+
+  if (!["STRIPE", "PAYPAL"].includes(paymentProvider)) {
+    throw new CustomError("Invalid payment provider", 400);
+  }
+
+  // VERIFICA PRODOTTI
+  const productIds = items.map((item) => item.productId);
+  const products = await prisma.product.findMany({
+    where: { id: { in: productIds }, isActive: true },
+  });
+
+  if (products.length !== productIds.length) {
+    const foundIds = products.map((p) => p.id);
+    const missingIds = productIds.filter((id) => !foundIds.includes(id));
+    throw new CustomError(`Products not found: ${missingIds.join(", ")}`, 400);
+  }
+
+  // CALCOLO TOTALE
+  let subtotal = 0;
+  const orderItemsData: OrderItemData[] = [];
+
+  for (const item of items) {
+    const product = products.find((p) => p.id === item.productId)!;
+    const lineTotal = product.price.toNumber() * item.quantity;
+    subtotal += lineTotal;
+
+    orderItemsData.push({
+      productId: item.productId,
+      quantity: item.quantity,
+      price: product.price.toNumber(),
     });
   }
-};
 
-// CREAZIONE ORDINE
-// POST /api/orders
-export const createOrder = async (req: Request, res: Response) => {
-  try {
-    const {
-      customerEmail,
-      customerFirstName,
-      customerLastName,
-      items,
-      discountCode,
-      paymentProvider = "STRIPE",
-      currency = "EUR",
-    }: CreateOrderRequest & {
-      paymentProvider?: "STRIPE" | "PAYPAL";
-      currency?: string;
-    } = req.body;
+  // GESTIONE SCONTO
+  let discount = 0;
+  let discountCodeRecord = null;
 
-    // VALIDAZIONE
-    if (!customerEmail || !items || items.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Customer email and items are required",
-      });
-    }
-
-    // VALIDAZIONE EMAIL
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(customerEmail)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid email format",
-      });
-    }
-
-    // VALIDAZIONE ITEMS
-    for (const item of items) {
-      if (!item.productId || !item.quantity || item.quantity <= 0) {
-        return res.status(400).json({
-          success: false,
-          message: "Each item must have productId and positive quantity",
-        });
-      }
-    }
-
-    // VALIDAZIONE CURRENCY
-    const supportedCurrencies = currencyService
-      .getSupportedCurrencies()
-      .map((c) => c.code);
-    if (!supportedCurrencies.includes(currency)) {
-      return res.status(400).json({
-        success: false,
-        message: `Currency ${currency} not supported. Supported currencies: ${supportedCurrencies.join(
-          ", "
-        )}`,
-      });
-    }
-
-    if (!["STRIPE", "PAYPAL"].includes(paymentProvider)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid payment provider. Must be STRIPE or PAYPAL",
-      });
-    }
-
-    // VERIFICA DISPONIBILITÀ DEL PRODOTTO
-    const productIds = items.map((item) => item.productId);
-    const products = await prisma.product.findMany({
+  if (discountCode) {
+    discountCodeRecord = await prisma.discountCode.findFirst({
       where: {
-        id: { in: productIds },
+        code: discountCode.trim().toUpperCase(),
         isActive: true,
+        OR: [{ validFrom: null }, { validFrom: { lte: new Date() } }],
       },
     });
 
-    // CONTROLLA CHE I PRODOTTI ESISTINO
-    if (products.length !== productIds.length) {
-      const foundIds = products.map((p) => p.id);
-      const missingIds = productIds.filter((id) => !foundIds.includes(id));
-      return res.status(400).json({
-        success: false,
-        message: `Products not found or inactive: ${missingIds.join(", ")}`,
-      });
-    }
-
-    // CALCOLO TOTALE ORDINE
-    let subtotal = 0;
-    const orderItemsData: OrderItemData[] = [];
-
-    for (const item of items) {
-      const product = products.find((p) => p.id === item.productId)!;
-      const lineTotal = product.price.toNumber() * item.quantity;
-      subtotal += lineTotal;
-
-      orderItemsData.push({
-        productId: item.productId,
-        quantity: item.quantity,
-        price: product.price.toNumber(),
-      });
-    }
-
-    let discount = 0;
-    let discountCodeRecord = null;
-
-    // APPLICA CODICE SCONTO SE PRESENTE
-    if (discountCode) {
-      discountCodeRecord = await prisma.discountCode.findFirst({
-        where: {
-          code: discountCode.trim().toUpperCase(),
-          isActive: true,
-          OR: [{ validFrom: null }, { validFrom: { lte: new Date() } }],
-        },
-      });
-
-      if (!discountCodeRecord) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid or expired discount code",
-        });
-      }
-
-      // CONTROLLO SCADENZA SCONTO
-      if (
-        discountCodeRecord.validUntil &&
-        discountCodeRecord.validUntil < new Date()
-      ) {
-        return res.status(400).json({
-          success: false,
-          message: "Discount code has expired",
-        });
-      }
-
-      // CONTROLLO LIMITI SCONTO USO
-      if (
-        discountCodeRecord.maxUses &&
-        discountCodeRecord.currentUses >= discountCodeRecord.maxUses
-      ) {
-        return res.status(400).json({
-          success: false,
-          message: "Discount code usage limit reached",
-        });
-      }
-
-      // CALCOLA LO SCONTO
-      if (discountCodeRecord.discountType === "PERCENTAGE") {
-        discount =
-          (subtotal * discountCodeRecord.discountValue.toNumber()) / 100;
-      } else {
-        discount = discountCodeRecord.discountValue.toNumber();
-      }
-
-      // LO SCONTO NON PUÒ SUPERARE IL TOTALE DELL'ORDINE
-      discount = Math.min(discount, subtotal);
-    }
-
-    const total = subtotal - discount;
-
-    let displayTotal = total;
-    let exchangeRate = 1;
-
-    if (currency !== "EUR") {
-      const conversion = await currencyService.convertPrice(
-        total,
-        "EUR",
-        currency
-      );
-      displayTotal = conversion.convertedAmount;
-      exchangeRate = conversion.rate;
-    }
-
-    // CONTROLLO AMOUNT MINIMO STRIPE
-    if (paymentProvider === "STRIPE" && displayTotal < 0.5) {
-      return res.status(400).json({
-        success: false,
-        message: "Stripe requires minimum €0.50",
-      });
-    }
-    // CONTROLLO AMOUNT MINIMO PAYPAL
-    if (paymentProvider === "PAYPAL" && displayTotal < 1.0) {
-      return res.status(400).json({
-        success: false,
-        message: "PayPal requires minimum €1.00",
-      });
-    }
-
-    // VERIFICA SE L'UTENTE È REGISTRATO
-    const userId = req.user?.id || null;
-    const isAdmin = req.user?.role === "ADMIN";
-
-    // CREAZIONE ORDINE
-    const result = await prisma.$transaction(async (tx) => {
-      let paymentData: {
-        stripePaymentIntentId?: string;
-        paypalOrderId?: string;
-        clientSecret?: string | null;
-        approvalUrl?: string | null;
-      } = {};
-
-      if (paymentProvider === "STRIPE") {
-        const paymentIntent = await stripe.paymentIntents.create({
-          amount: Math.round(displayTotal * 100),
-          currency: currency.toLowerCase(),
-          metadata: {
-            customerEmail: customerEmail.toLowerCase(),
-            originalAmount: total.toString(),
-            exchangeRate: exchangeRate.toString(),
-            ...(customerFirstName && { customerFirstName }),
-            ...(customerLastName && { customerLastName }),
-          },
-        });
-        paymentData = {
-          stripePaymentIntentId: paymentIntent.id,
-          clientSecret: paymentIntent.client_secret,
-        };
-      } else if (paymentProvider === "PAYPAL") {
-        const paypalOrder = await paypalService.createOrder({
-          amount: displayTotal,
-          currency: currency,
-          orderId: `ORDER-${Date.now()}`,
-        });
-        paymentData = {
-          paypalOrderId: paypalOrder.id,
-          approvalUrl: paypalOrder.links?.find((link) => link.rel === "approve")
-            ?.href,
-        };
-      }
-
-      // CREA ORDINE - Solo admin vede filePath
-      const order = await tx.order.create({
-        data: {
-          customerEmail: customerEmail.toLowerCase(),
-          customerFirstName: customerFirstName?.trim() || null,
-          customerLastName: customerLastName?.trim() || null,
-          total: total,
-          status: "PENDING",
-          paymentStatus: "PENDING",
-          currency: currency,
-          exchangeRate: exchangeRate,
-          originalAmount: currency !== "EUR" ? total : null,
-          stripePaymentIntentId: paymentData.stripePaymentIntentId || null,
-          paypalOrderId: paymentData.paypalOrderId || null,
-          userId: userId,
-          orderItems: {
-            create: orderItemsData,
-          },
-        },
-        include: {
-          orderItems: {
-            include: {
-              product: {
-                select: {
-                  id: true,
-                  name: true,
-                  description: true,
-                  fileName: true,
-                  filePath: isAdmin,
-                },
-              },
-            },
-          },
-          user: userId
-            ? {
-                select: {
-                  id: true,
-                  firstName: true,
-                  lastName: true,
-                },
-              }
-            : false,
-        },
-      });
-
-      console.log(
-        `Order created: ${order.id}, Provider: ${paymentProvider}, Currency: ${currency}, Amount: ${displayTotal}, Exchange Rate: ${exchangeRate}`
-      );
-
-      // AGGIORNA SCONTO SE PRESENTE
-      if (discountCodeRecord) {
-        await tx.discountCode.update({
-          where: { id: discountCodeRecord.id },
-          data: { currentUses: { increment: 1 } },
-        });
-      }
-
-      return {
-        order,
-        clientSecret: paymentData.clientSecret,
-        approvalUrl: paymentData.approvalUrl,
-      };
-    });
-
-    // INVIA EMAIL DI CONFERMA
-    const { order, clientSecret, approvalUrl } = result;
-    const orderResponse = formatOrderResponse(order, isAdmin);
-
-    try {
-      await sendOrderConfirmation(orderResponse);
-      console.log(`Order confirmation email sent for order: ${order.id}`);
-    } catch (emailError) {
-      console.error("Failed to send order confirmation email:", emailError);
-    }
-
-    res.status(201).json({
-      success: true,
-      message: "Order created successfully",
-      order: orderResponse,
-      ...(clientSecret && { clientSecret }),
-      ...(approvalUrl && { approvalUrl }),
-      paymentProvider,
-      currency,
-      displayTotal,
-      exchangeRate,
-    } as CreateOrderResponse);
-  } catch (error: unknown) {
-    console.error("Create order error:", error);
-
-    if (error instanceof Error && error.message.includes("stripe")) {
-      return res.status(400).json({
-        success: false,
-        message: "Payment processing error. Please try again.",
-      });
+    if (!discountCodeRecord) {
+      throw new CustomError("Invalid or expired discount code", 400);
     }
 
     if (
-      error instanceof Error &&
-      (error.message.includes("paypal") || error.message.includes("PayPal"))
+      discountCodeRecord.validUntil &&
+      discountCodeRecord.validUntil < new Date()
     ) {
-      return res.status(400).json({
-        success: false,
-        message: "PayPal processing error. Please try again.",
-      });
+      throw new CustomError("Discount code has expired", 400);
     }
 
-    res.status(500).json({
-      success: false,
-      message: "Failed to create order",
-    });
+    if (
+      discountCodeRecord.maxUses &&
+      discountCodeRecord.currentUses >= discountCodeRecord.maxUses
+    ) {
+      throw new CustomError("Discount code usage limit reached", 400);
+    }
+
+    if (discountCodeRecord.discountType === "PERCENTAGE") {
+      discount = (subtotal * discountCodeRecord.discountValue.toNumber()) / 100;
+    } else {
+      discount = discountCodeRecord.discountValue.toNumber();
+    }
+
+    discount = Math.min(discount, subtotal);
   }
-};
 
-// LISTA ORDINI DELL'UTENTE
-// GET /api/user/orders
-export const getUserOrders = async (req: Request, res: Response) => {
-  try {
-    if (!req.user) {
-      return res.status(401).json({
-        success: false,
-        message: "Authentication required",
-      });
-    }
+  const total = subtotal - discount;
 
-    const page = getStringParam(req.query.page) || "1";
-    const limit = getStringParam(req.query.limit) || "10";
+  let displayTotal = total;
+  let exchangeRate = 1;
 
-    const pageNum = Math.max(1, Number(page) || 1);
-    const limitNum = Math.min(50, Math.max(1, Number(limit) || 10));
-    const skip = (pageNum - 1) * limitNum;
-
-    const [orders, total] = await Promise.all([
-      prisma.order.findMany({
-        where: { userId: req.user.id },
-        include: {
-          orderItems: {
-            include: {
-              product: {
-                select: {
-                  id: true,
-                  name: true,
-                  description: true,
-                  fileName: true,
-                },
-              },
-            },
-          },
-        },
-        orderBy: { createdAt: "desc" },
-        skip,
-        take: limitNum,
-      }),
-      prisma.order.count({
-        where: { userId: req.user.id },
-      }),
-    ]);
-
-    const ordersResponse: UserOrderResponse[] = orders.map(
-      formatUserOrderResponse
-    );
-
-    res.json({
-      success: true,
-      message: "Orders retrieved successfully",
-      orders: ordersResponse,
+  if (currency !== "EUR") {
+    const conversion = await currencyService.convertPrice(
       total,
-      pagination: {
-        page: pageNum,
-        limit: limitNum,
-        totalPages: Math.ceil(total / limitNum),
-      },
-    } as UserOrderListResponse);
-  } catch (error: unknown) {
-    console.error("Get user orders error:", error);
-
-    res.status(500).json({
-      success: false,
-      message: "Failed to get orders",
-    });
+      "EUR",
+      currency
+    );
+    displayTotal = conversion.convertedAmount;
+    exchangeRate = conversion.rate;
   }
-};
 
-// DETTAGLIO ORDINE
-// GET /api/orders/:id
-export const getOrderById = async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
+  // CONTROLLI MINIMI
+  if (paymentProvider === "STRIPE" && displayTotal < 0.5) {
+    throw new CustomError("Stripe requires minimum €0.50", 400);
+  }
+  if (paymentProvider === "PAYPAL" && displayTotal < 1.0) {
+    throw new CustomError("PayPal requires minimum €1.00", 400);
+  }
 
-    // CONTROLLO AUTORIZZAZIONI
-    const isOwner = req.user && req.user.id;
-    const isAdmin = req.user && req.user.role === "ADMIN";
+  const userId = req.user?.id || null;
+  const isAdmin = req.user?.role === "ADMIN";
 
-    const order = await prisma.order.findUnique({
-      where: { id },
+  // CREAZIONE ORDINE CON INTENT PAGAMENTO
+  const result = await prisma.$transaction(async (tx) => {
+    let paymentData: {
+      stripePaymentIntentId?: string;
+      paypalOrderId?: string;
+      clientSecret?: string | null;
+      approvalUrl?: string | null;
+    } = {};
+
+    // CREA INTENT PAGAMENTO (ma non processar automaticamente)
+    if (paymentProvider === "STRIPE") {
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: Math.round(displayTotal * 100),
+        currency: currency.toLowerCase(),
+        automatic_payment_methods: { enabled: true },
+        metadata: {
+          customerEmail: customerEmail.toLowerCase(),
+          originalAmount: total.toString(),
+          exchangeRate: exchangeRate.toString(),
+          ...(customerFirstName && { customerFirstName }),
+          ...(customerLastName && { customerLastName }),
+        },
+      });
+      paymentData = {
+        stripePaymentIntentId: paymentIntent.id,
+        clientSecret: paymentIntent.client_secret,
+      };
+    } else if (paymentProvider === "PAYPAL") {
+      const paypalOrder = await paypalService.createOrder({
+        amount: displayTotal,
+        currency: currency,
+        orderId: `ORDER-${Date.now()}`,
+      });
+      paymentData = {
+        paypalOrderId: paypalOrder.id,
+        approvalUrl: paypalOrder.links?.find((link) => link.rel === "approve")
+          ?.href,
+      };
+    }
+
+    // CREA ORDINE NEL DATABASE
+    const order = await tx.order.create({
+      data: {
+        customerEmail: customerEmail.toLowerCase(),
+        customerFirstName: customerFirstName?.trim() || null,
+        customerLastName: customerLastName?.trim() || null,
+        total: total,
+        status: "PENDING",
+        paymentStatus: "PENDING",
+        currency: currency,
+        exchangeRate: exchangeRate,
+        originalAmount: currency !== "EUR" ? total : null,
+        stripePaymentIntentId: paymentData.stripePaymentIntentId || null,
+        paypalOrderId: paymentData.paypalOrderId || null,
+        userId: userId,
+        orderItems: {
+          create: orderItemsData,
+        },
+      },
       include: {
         orderItems: {
           include: {
@@ -714,73 +460,182 @@ export const getOrderById = async (req: Request, res: Response) => {
             },
           },
         },
-        user: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-          },
-        },
+        user: userId
+          ? {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+              },
+            }
+          : false,
       },
     });
 
-    if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: "Order not found",
+    console.log(`Order created: ${order.id}, Provider: ${paymentProvider}`);
+
+    // AGGIORNA SCONTO
+    if (discountCodeRecord) {
+      await tx.discountCode.update({
+        where: { id: discountCodeRecord.id },
+        data: { currentUses: { increment: 1 } },
       });
     }
 
-    // VERIFICA AUTORIZZAZIONI
-    const isOrderOwner = req.user && order.userId === req.user.id;
+    return {
+      order,
+      clientSecret: paymentData.clientSecret,
+      approvalUrl: paymentData.approvalUrl,
+    };
+  });
 
-    if (!isOrderOwner && !isAdmin) {
-      return res.status(403).json({
-        success: false,
-        message: "Access denied",
-      });
-    }
+  const { order, clientSecret, approvalUrl } = result;
+  const orderResponse = formatOrderResponse(order, isAdmin);
 
-    const orderResponse = formatOrderResponse(order, isAdmin);
-
-    res.json({
-      success: true,
-      message: "Order retrieved successfully",
-      order: orderResponse,
-    } as OrderDetailResponse);
-  } catch (error: unknown) {
-    console.error("Get order by id error:", error);
-
-    res.status(500).json({
-      success: false,
-      message: "Failed to get order",
-    });
-  }
-};
-
-// AGGIORNA STATUS ORDINE - ADMIN
-// PUT /api/admin/orders/:id/status
-export const updateOrderStatus = async (req: Request, res: Response) => {
+  // INVIA EMAIL CONFERMA
   try {
+    await sendOrderConfirmation(orderResponse);
+    console.log(`Order confirmation email sent for order: ${order.id}`);
+  } catch (emailError) {
+    console.error("Failed to send order confirmation email:", emailError);
+  }
+
+  res.status(201).json({
+    success: true,
+    message: "Order created successfully",
+    order: orderResponse,
+    ...(clientSecret && { clientSecret }),
+    ...(approvalUrl && { approvalUrl }),
+    paymentProvider,
+    currency,
+    displayTotal,
+    exchangeRate,
+  } as CreateOrderResponse);
+});
+
+// LISTA ORDINI UTENTE (INVARIATO)
+// GET /api/user/orders
+export const getUserOrders = catchAsync(async (req: Request, res: Response) => {
+  if (!req.user) {
+    throw new CustomError("Authentication required", 401);
+  }
+
+  const page = getStringParam(req.query.page) || "1";
+  const limit = getStringParam(req.query.limit) || "10";
+
+  const pageNum = Math.max(1, Number(page) || 1);
+  const limitNum = Math.min(50, Math.max(1, Number(limit) || 10));
+  const skip = (pageNum - 1) * limitNum;
+
+  const [orders, total] = await Promise.all([
+    prisma.order.findMany({
+      where: { userId: req.user.id },
+      include: {
+        orderItems: {
+          include: {
+            product: {
+              select: {
+                id: true,
+                name: true,
+                description: true,
+                fileName: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      skip,
+      take: limitNum,
+    }),
+    prisma.order.count({ where: { userId: req.user.id } }),
+  ]);
+
+  const ordersResponse: UserOrderResponse[] = orders.map(
+    formatUserOrderResponse
+  );
+
+  res.json({
+    success: true,
+    message: "Orders retrieved successfully",
+    orders: ordersResponse,
+    total,
+    pagination: {
+      page: pageNum,
+      limit: limitNum,
+      totalPages: Math.ceil(total / limitNum),
+    },
+  } as UserOrderListResponse);
+});
+
+// DETTAGLIO ORDINE (INVARIATO)
+// GET /api/orders/:id
+export const getOrderById = catchAsync(async (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  const isAdmin = req.user && req.user.role === "ADMIN";
+
+  const order = await prisma.order.findUnique({
+    where: { id },
+    include: {
+      orderItems: {
+        include: {
+          product: {
+            select: {
+              id: true,
+              name: true,
+              description: true,
+              fileName: true,
+              filePath: isAdmin,
+            },
+          },
+        },
+      },
+      user: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+        },
+      },
+    },
+  });
+
+  if (!order) {
+    throw new CustomError("Order not found", 404);
+  }
+
+  const isOrderOwner = req.user && order.userId === req.user.id;
+
+  if (!isOrderOwner && !isAdmin) {
+    throw new CustomError("Access denied", 403);
+  }
+
+  const orderResponse = formatOrderResponse(order, isAdmin);
+
+  res.json({
+    success: true,
+    message: "Order retrieved successfully",
+    order: orderResponse,
+  } as OrderDetailResponse);
+});
+
+// AGGIORNA STATUS ORDINE - ADMIN (INVARIATO)
+// PUT /api/admin/orders/:id/status
+export const updateOrderStatus = catchAsync(
+  async (req: Request, res: Response) => {
     const { id } = req.params;
     const updateData: UpdateOrderStatusRequest = req.body;
 
-    const order = await prisma.order.findUnique({
-      where: { id },
-    });
+    const order = await prisma.order.findUnique({ where: { id } });
     if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: "Order not found",
-      });
+      throw new CustomError("Order not found", 404);
     }
 
     const previousStatus = order.status;
 
-    // PREPARA I DATI PER L'UPDATE
     const data: Prisma.OrderUpdateInput = {};
-
     if (updateData.status) data.status = updateData.status;
     if (updateData.paymentStatus) data.paymentStatus = updateData.paymentStatus;
     if (updateData.stripePaymentIntentId)
@@ -817,12 +672,11 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
 
     const orderResponse = formatOrderResponse(updatedOrder, true);
 
-    // INVIA EMAIL SE STATUS CAMBIATO
     if (updateData.status && updateData.status !== previousStatus) {
       try {
         await sendOrderStatusUpdate(orderResponse, previousStatus);
         console.log(
-          `Order status update email sent for order: ${updatedOrder.id} (${previousStatus} → ${updateData.status})`
+          `Order status update email sent for order: ${updatedOrder.id}`
         );
       } catch (emailError) {
         console.error("Failed to send order status update email:", emailError);
@@ -834,12 +688,5 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
       message: "Order status updated successfully",
       order: orderResponse,
     });
-  } catch (error: unknown) {
-    console.error("Update order status error:", error);
-
-    res.status(500).json({
-      success: false,
-      message: "Failed to update order status",
-    });
   }
-};
+);

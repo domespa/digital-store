@@ -64,17 +64,14 @@ export class FileController {
       // Verifica che il prodotto esista
       const product = await prisma.product.findUnique({
         where: { id: productId },
-        include: { user: true }, // Include owner info
       });
 
       if (!product) {
         throw new CustomError("Product not found", 404);
       }
 
-      // Verifica permessi (admin o proprietario)
-      const isAdmin = req.user?.role === "ADMIN";
-      const isOwner = req.user?.id === product.userId;
-      if (!isAdmin) {
+      // Verifica permessi (solo admin)
+      if (req.user?.role !== "ADMIN") {
         throw new CustomError("Admin access required", 403);
       }
 
@@ -99,19 +96,23 @@ export class FileController {
       );
 
       // Ottieni le immagini caricate (con retry per race condition)
-      let productImages;
-      for (let i = 0; i < 3; i++) {
-        productImages = await prisma.productImage.findMany({
-          where: { productId },
-          orderBy: { sortOrder: "asc" },
-        });
+      let productImages = await prisma.productImage.findMany({
+        where: { productId },
+        orderBy: { sortOrder: "asc" },
+      });
 
+      for (let i = 0; i < 2; i++) {
         if (productImages.length >= existingImagesCount + req.files.length) {
           break;
         }
 
         // Breve attesa per permettere al database di aggiornarsi
         await new Promise((resolve) => setTimeout(resolve, 100));
+
+        productImages = await prisma.productImage.findMany({
+          where: { productId },
+          orderBy: { sortOrder: "asc" },
+        });
       }
 
       res.json({
@@ -120,7 +121,7 @@ export class FileController {
         data: {
           productId,
           images: productImages,
-          totalImages: productImages?.length || 0,
+          totalImages: productImages.length,
         },
       });
     }
@@ -321,9 +322,7 @@ export class FileController {
       const image = await prisma.productImage.findUnique({
         where: { id: imageId },
         include: {
-          product: {
-            include: { user: true },
-          },
+          product: true,
         },
       });
 
@@ -331,15 +330,9 @@ export class FileController {
         throw new CustomError("Image not found", 404);
       }
 
-      // Verifica permessi (admin o proprietario del prodotto)
-      const isAdmin = req.user?.role === "ADMIN";
-      const isOwner = req.user?.id === image.product?.userId;
-
-      if (!isAdmin && !isOwner) {
-        throw new CustomError(
-          "Access denied - admin or product owner required",
-          403
-        );
+      // Verifica permessi (solo admin)
+      if (req.user?.role !== "ADMIN") {
+        throw new CustomError("Admin access required", 403);
       }
 
       // Elimina da Cloudinary
@@ -447,21 +440,14 @@ export class FileController {
       // Verifica prodotto e permessi
       const product = await prisma.product.findUnique({
         where: { id: productId },
-        include: { user: true },
       });
 
       if (!product) {
         throw new CustomError("Product not found", 404);
       }
 
-      const isAdmin = req.user?.role === "ADMIN";
-      const isOwner = req.user?.id === product.userId;
-
-      if (!isAdmin && !isOwner) {
-        throw new CustomError(
-          "Access denied - admin or product owner required",
-          403
-        );
+      if (req.user?.role !== "ADMIN") {
+        throw new CustomError("Admin access required", 403);
       }
 
       // Validazione formato array dettagliata
@@ -599,9 +585,7 @@ export class FileController {
     }
 
     // Verifica permessi (solo admin)
-    const isAdmin = req.user?.role === "ADMIN";
-
-    if (!isAdmin) {
+    if (req.user?.role !== "ADMIN") {
       throw new CustomError("Admin access required", 403);
     }
 
