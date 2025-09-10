@@ -1,5 +1,9 @@
 import axios, { AxiosResponse } from "axios";
 
+// ===========================================
+//               TYPES & INTERFACES
+// ===========================================
+
 interface PayPalTokenResponse {
   scope: string;
   access_token: string;
@@ -85,6 +89,10 @@ interface PayPalCaptureResponse {
   }>;
 }
 
+// ===========================================
+//           PAYPAL SERVICE CLASS
+// ===========================================
+
 export class PayPalService {
   private baseURL: string;
   private clientId: string;
@@ -93,7 +101,11 @@ export class PayPalService {
   private tokenExpiry: number = 0;
 
   constructor() {
-    // VALIDAZIONE VARIABILI
+    // ===========================================
+    //              INITIALIZATION
+    // ===========================================
+
+    // VALIDAZIONE VARIABILI AMBIENTE
     this.clientId = process.env.PAYPAL_CLIENT_ID || "";
     this.clientSecret = process.env.PAYPAL_CLIENT_SECRET || "";
 
@@ -101,14 +113,20 @@ export class PayPalService {
       throw new Error("PayPal credentials not configured");
     }
 
-    // URL VARIABILI
+    // URL BASATO SU AMBIENTE (SANDBOX/PRODUCTION)
     this.baseURL =
       process.env.PAYPAL_ENVIRONMENT === "production"
         ? "https://api-m.paypal.com"
         : "https://api-m.sandbox.paypal.com";
   }
 
+  // ===========================================
+  //           AUTHENTICATION
+  // ===========================================
+
+  // OTTIENI ACCESS TOKEN CON CACHE
   private async getAccessToken(): Promise<string> {
+    // USA TOKEN CACHED SE ANCORA VALIDO
     if (this.accessToken && Date.now() < this.tokenExpiry) {
       return this.accessToken;
     }
@@ -130,7 +148,7 @@ export class PayPalService {
       );
 
       this.accessToken = response.data.access_token;
-      this.tokenExpiry = Date.now() + response.data.expires_in * 1000 - 60000; // -1min di buffer
+      this.tokenExpiry = Date.now() + response.data.expires_in * 1000 - 60000; // -1MIN DI BUFFER
 
       console.log("PayPal access token obtained");
       return this.accessToken;
@@ -140,7 +158,7 @@ export class PayPalService {
     }
   }
 
-  // HEADERS
+  // GENERA HEADERS AUTENTICATI
   private async getAuthHeaders(): Promise<Record<string, string>> {
     const token = await this.getAccessToken();
     return {
@@ -153,7 +171,11 @@ export class PayPalService {
     };
   }
 
-  // CREA ORDINE
+  // ===========================================
+  //             ORDER MANAGEMENT
+  // ===========================================
+
+  // CREA ORDINE PAYPAL
   async createOrder(params: {
     amount: number;
     currency: string;
@@ -168,7 +190,7 @@ export class PayPalService {
     try {
       const headers = await this.getAuthHeaders();
 
-      // VALIDAZIONI
+      // VALIDAZIONI INPUT
       if (params.amount <= 0) {
         throw new Error("Amount must be greater than 0");
       }
@@ -183,7 +205,7 @@ export class PayPalService {
         },
       };
 
-      // AGGIUNGI ITEM
+      // AGGIUNGI ITEMS SE PRESENTI
       if (params.items && params.items.length > 0) {
         purchaseUnit.items = params.items.map((item) => ({
           name: item.name,
@@ -232,7 +254,7 @@ export class PayPalService {
     }
   }
 
-  // CATTURA PAGAMENTO
+  // CATTURA PAGAMENTO APPROVATO
   async captureOrder(orderId: string): Promise<PayPalCaptureResponse> {
     try {
       const headers = await this.getAuthHeaders();
@@ -258,6 +280,7 @@ export class PayPalService {
     }
   }
 
+  // OTTIENI DETTAGLI ORDINE
   async getOrderDetails(orderId: string): Promise<PayPalOrderResponse> {
     try {
       const headers = await this.getAuthHeaders();
@@ -281,17 +304,22 @@ export class PayPalService {
     }
   }
 
+  // ===========================================
+  //             UTILITY METHODS
+  // ===========================================
+
+  // INFORMAZIONI AMBIENTE
   getEnvironmentInfo() {
     return {
       environment: process.env.PAYPAL_ENVIRONMENT || "sandbox",
       baseURL: this.baseURL,
       isProduction: process.env.PAYPAL_ENVIRONMENT === "production",
-      clientId: this.clientId.substring(0, 10) + "...", // Partial per sicurezza
+      clientId: this.clientId.substring(0, 10) + "...", // PARZIALE PER SICUREZZA
       hasValidCredentials: Boolean(this.clientId && this.clientSecret),
     };
   }
 
-  // TEST CONNECTION
+  // TEST CONNESSIONE PAYPAL
   async testConnection(): Promise<boolean> {
     try {
       await this.getAccessToken();
@@ -300,7 +328,46 @@ export class PayPalService {
       return false;
     }
   }
+
+  // ===========================================
+  //           ADDITIONAL FEATURES
+  // ===========================================
+
+  // CANCELLA TOKEN CACHE (PER LOGOUT O REFRESH)
+  clearTokenCache(): void {
+    this.accessToken = null;
+    this.tokenExpiry = 0;
+    console.log("PayPal token cache cleared");
+  }
+
+  // VERIFICA SE TOKEN È SCADUTO
+  isTokenExpired(): boolean {
+    return Date.now() >= this.tokenExpiry;
+  }
+
+  // OTTIENI LINK APPROVAZIONE DA RESPONSE
+  getApprovalUrl(orderResponse: PayPalOrderResponse): string | null {
+    const approvalLink = orderResponse.links.find(
+      (link) => link.rel === "approve"
+    );
+    return approvalLink?.href || null;
+  }
+
+  // FORMATTA ERRORE PAYPAL PER LOG
+  private formatPayPalError(error: any): string {
+    if (axios.isAxiosError(error) && error.response) {
+      const data = error.response.data;
+      return `PayPal Error ${error.response.status}: ${
+        data.message || data.error_description || JSON.stringify(data)
+      }`;
+    }
+    return error.message || "Unknown PayPal error";
+  }
 }
+
+// ===========================================
+//              SINGLETON EXPORT
+// ===========================================
 
 export const paypalService = new PayPalService();
 

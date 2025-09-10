@@ -1,3 +1,7 @@
+// ===========================================
+//            PROFANITY FILTER CLASS
+// ===========================================
+
 // UTILITÀ FILTRO VOLGARITÀ PER PULIRE CONTENUTO RECENSIONI
 class ProfanityFilter {
   private readonly strictWords: Set<string>;
@@ -6,6 +10,10 @@ class ProfanityFilter {
   private readonly whitelistedWords: Set<string>;
 
   constructor() {
+    // ===========================================
+    //           WORD LISTS INITIALIZATION
+    // ===========================================
+
     // INIZIALIZZA LISTE PAROLE - IN PRODUZIONE, CARICA DA DATABASE O FILE CONFIG
     this.strictWords = new Set([
       // AGGIUNGI PAROLE VOLGARITÀ SEVERE - QUESTE VERRANNO COMPLETAMENTE BLOCCATE
@@ -66,6 +74,11 @@ class ProfanityFilter {
       // DA COMPLETARE
     ]);
   }
+
+  // ===========================================
+  //             PUBLIC METHODS
+  // ===========================================
+
   // PULISCI TESTO FILTRANDO VOLGARITÀ
   clean(text: string): string {
     if (!text || typeof text !== "string") {
@@ -167,6 +180,10 @@ class ProfanityFilter {
     };
   }
 
+  // ===========================================
+  //            PRIVATE METHODS
+  // ===========================================
+
   // NORMALIZZA TESTO PER ELABORAZIONE
   private normalizeText(text: string): string {
     return text
@@ -200,6 +217,7 @@ class ProfanityFilter {
 
     return regex.test(text);
   }
+
   // FILTRA PAROLE SEVERE
   private filterStrictWords(text: string): string {
     let filteredText = text;
@@ -298,6 +316,7 @@ class ProfanityFilter {
 
     return [...new Set(flagged)]; // RIMUOVI DUPLICATI
   }
+
   // RIPRISTINA MAIUSCOLE ORIGINALI PER PARTI NON FILTRATE
   private restoreCase(original: string, filtered: string): string {
     // IMPLEMENTAZIONE SEMPLICE - IN PRODUZIONE, QUESTO POTREBBE ESSERE PIÙ SOFISTICATO
@@ -321,14 +340,16 @@ class ProfanityFilter {
 
     return result.join(" ");
   }
-  //  SPECIALI REGEX
+
+  // ESCAPE CARATTERI SPECIALI REGEX
   private escapeRegex(string: string): string {
-    return string.replace(
-      /[.*+?^${}()|[\]\\]/g,
-      "\\    return [...new Set(flagged)]; //"
-    );
+    return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
 }
+
+// ===========================================
+//               EXPORTS
+// ===========================================
 
 // ISTANZA SINGLETON
 export const profanityFilter = new ProfanityFilter();

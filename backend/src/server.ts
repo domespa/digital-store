@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import dotenv from "dotenv";
+import { createServer } from "http";
 import { PrismaClient } from "./generated/prisma";
 
 // IMPORT SECURITY
@@ -28,6 +29,10 @@ import webhookRoutes from "./routes/webhook";
 import categoryRoutes from "./routes/category";
 import inventoryRoutes from "./routes/inventory";
 import reviewRoutes from "./routes/review";
+import wishlistRoutes from "./routes/wishlist";
+import searchRoutes from "./routes/search";
+import analyticsRoutes from "./routes/analytics";
+import { createNotificationRoutes } from "./routes/notification";
 
 // CARICHIAMO LE VARIABILI DI AMBIENTE
 dotenv.config();
@@ -38,6 +43,9 @@ const prisma = new PrismaClient();
 // CREO APP EXPRESS
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+// CREATE HTTP SERVER PER WEBSOCKET
+const httpServer = createServer(app);
 
 //=====================================================
 // ==================== MIDDLEWARE ====================
@@ -89,6 +97,8 @@ app.get("/api/health", (req, res) => {
       database: "connected",
       reviews: "operational",
       payments: "operational",
+      notifications: "operational",
+      websocket: "enabled",
     },
   });
 });
@@ -109,9 +119,22 @@ app.use("/api/categories", categoryRoutes);
 // RECENSIONI (PUBBLICO + AUTENTICATO)
 app.use("/api/reviews", reviewRateLimit.globalLimit, reviewRoutes);
 
+// RICERCA (PUBBLICO + AUTENTICATO)
+app.use("/api/search", searchRoutes);
+
+//=====================================================
+// =============== NOTIFICHE (WEBSOCKET) ==============
+//=====================================================
+
+const notificationRoutes = createNotificationRoutes(httpServer);
+app.use("/api/notifications", notificationRoutes);
+
 //=====================================================
 // ================ ROUTE AUTENTICATE =================
 //=====================================================
+
+// WISHLIST
+app.use("/api/wishlist", wishlistRoutes);
 
 // ORDINI (RICHIEDE AUTH)
 app.use("/api/orders", orderLimiter, orderRoutes);
@@ -129,19 +152,28 @@ app.use("/api/inventory", inventoryRoutes);
 // ADMIN GENERALE (RICHIEDE ADMIN AUTH)
 app.use("/api/admin", reviewRateLimit.adminModeration, adminRoutes);
 
+// ANALYTICS ADMIN (RICHIEDE ADMIN AUTH)
+app.use("/api/admin/analytics", analyticsRoutes);
+
 //=====================================================
 // ==================== DATABASE TEST =================
 //=====================================================
 
 app.get("/api/test-db", async (req, res) => {
   try {
-    const [userCount, productCount, orderCount, reviewCount] =
-      await Promise.all([
-        prisma.user.count(),
-        prisma.product.count(),
-        prisma.order.count(),
-        prisma.review.count(),
-      ]);
+    const [
+      userCount,
+      productCount,
+      orderCount,
+      reviewCount,
+      notificationCount,
+    ] = await Promise.all([
+      prisma.user.count(),
+      prisma.product.count(),
+      prisma.order.count(),
+      prisma.review.count(),
+      prisma.notification.count().catch(() => 0), // Se la tabella non esiste ancora
+    ]);
 
     res.json({
       status: "Database collegato",
@@ -150,6 +182,7 @@ app.get("/api/test-db", async (req, res) => {
         products: productCount,
         orders: orderCount,
         reviews: reviewCount,
+        notifications: notificationCount,
       },
       timestamp: new Date().toISOString(),
     });
@@ -184,6 +217,7 @@ app.get("/api/info", (req, res) => {
           "GET /api/reviews",
           "POST /api/reviews (guest)",
           "POST /api/reviews/:id/vote",
+          "GET /api/wishlist/shared/:shareToken",
         ],
         authenticated: [
           "GET /api/user/profile",
@@ -194,12 +228,42 @@ app.get("/api/info", (req, res) => {
           "PUT /api/reviews/:id",
           "DELETE /api/reviews/:id",
           "POST /api/reviews/:id/report",
+          "GET /api/wishlist",
+          "POST /api/wishlist",
+          "GET /api/wishlist/stats",
+          "GET /api/wishlist/check/:productId",
+          "POST /api/wishlist/toggle",
+          "POST /api/wishlist/bulk",
+          "GET /api/wishlist/share",
+          "DELETE /api/wishlist",
+          "POST /api/wishlist/:productId/move-to-cart",
+          "DELETE /api/wishlist/:productId",
+          "GET /api/notifications",
+          "GET /api/notifications/count",
+          "GET /api/notifications/stats",
+          "GET /api/notifications/preferences",
+          "PUT /api/notifications/preferences",
+          "PUT /api/notifications/:id/read",
+          "PUT /api/notifications/read-all",
+          "DELETE /api/notifications/:id",
         ],
         admin: [
           "GET /api/admin/*",
           "GET /api/reviews/admin/pending",
           "PUT /api/reviews/admin/:id",
           "DELETE /api/reviews/admin/:id",
+          "POST /api/notifications/admin/create",
+          "POST /api/notifications/admin/bulk",
+          "GET /api/notifications/admin/all",
+          "GET /api/notifications/admin/stats",
+          "POST /api/notifications/admin/test",
+          "POST /api/notifications/admin/process-scheduled",
+          "DELETE /api/notifications/admin/cleanup-expired",
+          "GET /api/notifications/admin/connections",
+          "POST /api/notifications/admin/templates",
+          "GET /api/notifications/admin/templates",
+          "PUT /api/notifications/admin/templates/:id",
+          "DELETE /api/notifications/admin/templates/:id",
         ],
       },
       rateLimits: {
@@ -212,7 +276,30 @@ app.get("/api/info", (req, res) => {
           report: "10 per hour",
           read: "100 per 15 minutes",
         },
+        wishlist: {
+          standard: "20 per 15 minutes",
+          bulk: "5 per hour",
+          sharing: "3 per hour",
+        },
+        search: {
+          standard: "100 per 15 minutes",
+          autocomplete: "300 per 15 minutes",
+          advanced: "30 per hour",
+        },
         admin: "100 moderation actions per hour",
+        notifications: {
+          general: "100 requests per 15 minutes",
+          admin: "200 requests per 15 minutes",
+          bulk: "10 bulk operations per hour",
+          markRead: "50 mark as read per minute",
+        },
+      },
+      features: {
+        websocket: "Real-time notifications enabled",
+        email: "Email notifications enabled",
+        templates: "Customizable notification templates",
+        scheduling: "Scheduled notifications support",
+        preferences: "User notification preferences",
       },
     },
   });
@@ -236,6 +323,7 @@ app.use("*", (req, res) => {
       "POST /api/auth/login",
       "GET /api/products",
       "GET /api/reviews",
+      "GET /api/notifications",
     ],
   });
 });
@@ -311,11 +399,12 @@ app.use(
     });
   }
 );
+
 //=====================================================
 //================== SERVER STARTUP ===================
 //=====================================================
 
-app.listen(PORT, () => {
+httpServer.listen(PORT, () => {
   console.log(`
 🚀 Digital Store Backend started!
 📡 Server: http://localhost:${PORT}
@@ -329,11 +418,20 @@ app.listen(PORT, () => {
   ✅ Input sanitization active
   ✅ CORS configured
   ✅ Helmet security headers
+  🔔 WebSocket notifications enabled
+  📧 Email notifications ready
 
 📝 API Endpoints:
   🌍 Public: /api/products, /api/reviews, /api/auth
-  🔒 Protected: /api/user, /api/orders
-  👑 Admin: /api/admin/*
+  🔒 Protected: /api/user, /api/orders, /api/notifications
+  👑 Admin: /api/admin/*, /api/notifications/admin/*
+
+🔔 Notification Features:
+  📡 Real-time WebSocket notifications
+  📧 Email notifications with templates
+  ⚙️  User preferences management
+  📊 Admin statistics and monitoring
+  ⏰ Scheduled notifications support
 
 ⏰ Started: ${new Date().toLocaleString("it-IT")}
 🌍 Environment: ${process.env.NODE_ENV || "development"}

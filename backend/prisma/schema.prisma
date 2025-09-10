@@ -8,9 +8,9 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-
-//------------------------------ USERS --------------------
-//-----------------------------------------//
+// ==========================================
+//                  USERS          
+// ==========================================
 model User {
   id String @id @default(cuid())  // USIAMO STRINGA IN ID PER MOTIVI DI SICUREZZA, ID NUMERICI SONO FACILMENTE RECUPERABILI - IL DEFAULT GENERA ID AUTOMATICI ALFANUMERICI
   email String @unique  // NESSUNA DUPLICAZIONE
@@ -25,6 +25,11 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   createdProducts Product[] @relation("ProductCreator")
+  source String? 
+  lastActivity DateTime? 
+  notifications Notification[]
+  notificationPreferences NotificationPreference?
+  websocketConnections WebSocketConnection[]
 
   // RELAZIONI
   orders Order[]
@@ -40,8 +45,10 @@ model User {
   @@map("users") // NOME TABELLA
 }
 
-//---------- PRODOTTI, CATEGORIE E LISTA PREFERITI--------------------
-//-----------------------------------------//
+// ==========================================
+//   PRODOTTI, CATEGORIE E LISTA PREFERITI 
+// ==========================================
+
 model Product{
   id String @id @default(cuid())
   name String
@@ -52,6 +59,7 @@ model Product{
   originalPrice Decimal? @db.Decimal(10, 2)
   fileName String?
   filePath String?
+  notifications Notification[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -171,14 +179,13 @@ model Wishlist {
   updatedAt DateTime @updatedAt
 
   @@unique([userId, productId], name: "unique_user_product_wishlist")
-  @@index([userId]
-  @@index([productId]))
+  @@index([userId])
+  @@index([productId])
   @@map("wishlists")
 }
-
-//---------- REVIEW VARIE ED EVENTUALI -------
-//-----------------------------------------//
-
+// ==========================================
+//        REVIEW VARIE ED EVENTUALI
+// ==========================================
 model Review {
   id String @id @default(cuid())
   productId String
@@ -195,6 +202,7 @@ model Review {
   helpfulCount Int @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  notifications Notification[]
 
   isPinned Boolean @default(false) // PER COMMENTI IMPORTANTI
   reportCount Int @default(0)
@@ -280,8 +288,10 @@ model ReviewModerationLog {
   @@map("review_moderation_logs")
 }
 
-//---------- ORDINI ED EVENTUALI -------
-//-----------------------------------------//
+
+// ==========================================
+//          ORDINI ED EVENTUALI
+// ==========================================
 model Order {
   id String @id @default(cuid())
 
@@ -306,6 +316,7 @@ model Order {
   // TIMESTAMPS
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  notifications Notification[]
 
   // RELAZIONI
   userId String?
@@ -380,8 +391,9 @@ model EmailQueue {
   @@map("email_queue")
 }
 
-//---------- VERIFICHE ACCOUNT-------
-//-----------------------------------------//
+// ==========================================
+//          VERIFICHE ACCOUNT
+// ==========================================
 // RESET PASSWORD
 model PasswordResetToken {
   id String @id @default(cuid())
@@ -408,9 +420,140 @@ model EmailVerificationToken {
   @@map("email_verification_tokens")
 }
 
+// ==========================================
+//                NORTIFICHE
+// ==========================================
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String?  
+  type      NotificationType
+  title     String
+  message   String
+  data      Json?    
+  priority  NotificationPriority @default(NORMAL)
+  category  NotificationCategory
+  isRead    Boolean  @default(false)
+  readAt    DateTime?
+  
+  // Delivery tracking
+  isDelivered Boolean @default(false)
+  deliveredAt DateTime?
+  deliveryMethod DeliveryMethod?
+  
+  // Scheduling
+  scheduledFor DateTime?
+  
+  // References
+  orderId     String?
+  productId   String?
+  reviewId    String?
+  userId_ref  String? 
+  
+  // Metadata
+  source      String?  
+  actionUrl   String?  
+  expiresAt   DateTime?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  user    User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  order   Order?   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id], onDelete: Cascade)
+  review  Review?  @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+  @@index([userId, createdAt])
+  @@index([type, createdAt])
+  @@index([isRead, userId])
+  @@index([scheduledFor])
+}
+
+model NotificationPreference {
+  id     String @id @default(cuid())
+  userId String @unique
+  
+  // Channel preferences
+  enableWebSocket    Boolean @default(true)
+  enableEmail        Boolean @default(true)
+  enablePush         Boolean @default(false)
+  
+  // Category preferences
+  orderUpdates       Boolean @default(true)
+  paymentAlerts      Boolean @default(true)
+  productUpdates     Boolean @default(true)
+  reviewNotifications Boolean @default(true)
+  promotions         Boolean @default(false)
+  systemAlerts       Boolean @default(true)
+  inventoryAlerts    Boolean @default(false) // ADMIN
+  
+  // Timing preferences
+  quietHours         Json?    
+  instantDelivery    Boolean @default(true)
+  batchDelivery      Boolean @default(false)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("notification_preferences")
+}
+
+model NotificationTemplate {
+  id          String @id @default(cuid())
+  type        NotificationType @unique
+  category    NotificationCategory
+  
+  // Templates per canale
+  websocketTitle    String
+  websocketMessage  String
+  emailSubject      String?
+  emailTemplate     String?
+  pushTitle         String?
+  pushMessage       String?
+  
+  // Configurazione
+  priority          NotificationPriority @default(NORMAL)
+  isActive          Boolean @default(true)
+  requiresAction    Boolean @default(false)
+  autoExpire        Boolean @default(false)
+  expirationHours   Int?
+  
+  variables         Json?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("notification_templates")
+}
+
+model WebSocketConnection {
+  id            String   @id @default(cuid())
+  userId        String
+  socketId      String   @unique
+  userAgent     String?
+  ipAddress     String?
+  isActive      Boolean  @default(true)
+  lastPing      DateTime @default(now())
+  connectedAt   DateTime @default(now())
+  disconnectedAt DateTime?
+  
+
+  subscribedChannels Json? 
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("websocket_connections")
+  @@index([userId, isActive])
+  @@index([socketId])
+}
 
 
-// ------------------------- ENUM
+// ==========================================
+//                ENUM
+// ==========================================
 enum UserRole {
   USER
   ADMIN
@@ -479,4 +622,72 @@ enum ModerationAction {
   EDITED
   DELETED
   RESTORED
+}
+
+enum NotificationType {
+
+  ORDER_CREATED
+  ORDER_CONFIRMED
+  ORDER_PROCESSING
+  ORDER_SHIPPED
+  ORDER_DELIVERED
+  ORDER_CANCELLED
+  ORDER_REFUNDED
+
+  PAYMENT_SUCCESS
+  PAYMENT_FAILED
+  PAYMENT_PENDING
+  PAYMENT_REFUNDED
+
+  PRODUCT_BACK_IN_STOCK
+  PRODUCT_PRICE_DROP
+  PRODUCT_NEW_REVIEW
+  WISHLIST_ITEM_SALE
+
+  REVIEW_SUBMITTED
+  REVIEW_APPROVED
+  REVIEW_REJECTED
+  REVIEW_HELPFUL_VOTE
+
+  ACCOUNT_CREATED
+  PASSWORD_CHANGED
+  EMAIL_VERIFIED
+  PROFILE_UPDATED
+
+  NEW_ORDER_ADMIN
+  LOW_STOCK_ALERT
+  HIGH_VALUE_ORDER
+  SUSPICIOUS_ACTIVITY
+  SYSTEM_ERROR
+  BACKUP_COMPLETED
+
+  PROMOTION_STARTED
+  DISCOUNT_EXPIRING
+  CART_ABANDONED
+  WELCOME_SERIES
+}
+
+enum NotificationPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum NotificationCategory {
+  ORDER
+  PAYMENT
+  PRODUCT
+  REVIEW
+  SYSTEM
+  ADMIN
+  MARKETING
+  SECURITY
+}
+
+enum DeliveryMethod {
+  WEBSOCKET
+  EMAIL
+  PUSH
+  SMS
 }

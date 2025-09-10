@@ -9,7 +9,10 @@ import crypto from "crypto";
 
 const prisma = new PrismaClient();
 
-// Configurazione Cloudinary
+// ===========================================
+//            CLOUDINARY CONFIGURATION
+// ===========================================
+
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
@@ -17,6 +20,10 @@ cloudinary.config({
 });
 
 export { cloudinary };
+
+// ===========================================
+//               TYPES & INTERFACES
+// ===========================================
 
 export interface UploadResult {
   id: string;
@@ -37,8 +44,16 @@ export interface ProcessedImageSizes {
   original: string;
 }
 
+// ===========================================
+//          FILE UPLOAD SERVICE CLASS
+// ===========================================
+
 export class FileUploadService {
-  // Magic bytes per validazione tipo file
+  // ===========================================
+  //             SECURITY CONSTANTS
+  // ===========================================
+
+  // MAGIC BYTES PER VALIDAZIONE TIPO FILE
   private static readonly MAGIC_BYTES = {
     jpeg: [0xff, 0xd8, 0xff],
     png: [0x89, 0x50, 0x4e, 0x47],
@@ -46,19 +61,25 @@ export class FileUploadService {
     webp: [0x52, 0x49, 0x46, 0x46],
     pdf: [0x25, 0x50, 0x44, 0x46],
     zip: [0x50, 0x4b, 0x03, 0x04],
-    docx: [0x50, 0x4b, 0x03, 0x04], // DOCX è un ZIP
+    docx: [0x50, 0x4b, 0x03, 0x04], // DOCX È UN ZIP
   };
 
-  // Rate limiting storage
+  // RATE LIMITING STORAGE
   private static uploadAttempts = new Map<string, number[]>();
+  private static downloadAttempts = new Map<string, number[]>();
 
+  // ===========================================
+  //            MULTER CONFIGURATION
+  // ===========================================
+
+  // CONFIGURAZIONE MULTER CON SICUREZZA AVANZATA
   static getMulterConfig() {
     const storage = multer.diskStorage({
       destination: (req, file, cb) => {
         cb(null, "uploads/temp/");
       },
       filename: (req, file, cb) => {
-        // Sanitizza il nome file
+        // SANITIZZA IL NOME FILE
         const sanitizedName = file.originalname
           .replace(/[^a-zA-Z0-9.-]/g, "_")
           .substring(0, 100);
@@ -70,13 +91,13 @@ export class FileUploadService {
 
     const fileFilter = (req: any, file: Express.Multer.File, cb: any) => {
       try {
-        // Rate limiting per IP
+        // RATE LIMITING PER IP
         const clientIP = req.ip || req.connection.remoteAddress || "unknown";
         if (!this.checkRateLimit(clientIP)) {
           return cb(new CustomError("Too many upload attempts", 429), false);
         }
 
-        // Validazione estensione
+        // VALIDAZIONE ESTENSIONE
         const allowedExtensions = [
           ".jpg",
           ".jpeg",
@@ -97,7 +118,7 @@ export class FileUploadService {
           );
         }
 
-        // Validazione MIME type
+        // VALIDAZIONE MIME TYPE
         const allowedMimeTypes = [
           "image/jpeg",
           "image/jpg",
@@ -118,7 +139,7 @@ export class FileUploadService {
           );
         }
 
-        // Validazione nome file - no path traversal
+        // VALIDAZIONE NOME FILE - PREVIENI PATH TRAVERSAL
         if (
           file.originalname.includes("..") ||
           file.originalname.includes("/") ||
@@ -140,15 +161,19 @@ export class FileUploadService {
         fileSize: 10 * 1024 * 1024, // 10MB
         files: 5,
         fieldNameSize: 100,
-        fieldSize: 1024 * 1024, // 1MB per field
+        fieldSize: 1024 * 1024, // 1MB PER FIELD
       },
     });
   }
 
-  // Rate limiting check
+  // ===========================================
+  //             RATE LIMITING
+  // ===========================================
+
+  // CONTROLLO RATE LIMITING PER UPLOAD
   private static checkRateLimit(ip: string): boolean {
     const now = Date.now();
-    const windowMs = 15 * 60 * 1000; // 15 minuti
+    const windowMs = 15 * 60 * 1000; // 15 MINUTI
     const maxAttempts = 20;
 
     if (!this.uploadAttempts.has(ip)) {
@@ -157,21 +182,47 @@ export class FileUploadService {
 
     const attempts = this.uploadAttempts.get(ip)!;
 
-    // Rimuovi tentativi vecchi
+    // RIMUOVI TENTATIVI VECCHI
     const validAttempts = attempts.filter((time) => now - time < windowMs);
 
     if (validAttempts.length >= maxAttempts) {
       return false;
     }
 
-    // Aggiungi tentativo corrente
+    // AGGIUNGI TENTATIVO CORRENTE
     validAttempts.push(now);
     this.uploadAttempts.set(ip, validAttempts);
 
     return true;
   }
 
-  // Validazione avanzata con magic bytes
+  // RATE LIMITING PER DOWNLOAD
+  private static checkDownloadRateLimit(key: string): boolean {
+    const now = Date.now();
+    const windowMs = 60 * 1000; // 1 MINUTO
+    const maxAttempts = 3; // MAX 3 DOWNLOAD PER MINUTO PER FILE
+
+    if (!this.downloadAttempts.has(key)) {
+      this.downloadAttempts.set(key, []);
+    }
+
+    const attempts = this.downloadAttempts.get(key)!;
+    const validAttempts = attempts.filter((time) => now - time < windowMs);
+
+    if (validAttempts.length >= maxAttempts) {
+      return false;
+    }
+
+    validAttempts.push(now);
+    this.downloadAttempts.set(key, validAttempts);
+    return true;
+  }
+
+  // ===========================================
+  //            FILE VALIDATION
+  // ===========================================
+
+  // VALIDAZIONE AVANZATA CON MAGIC BYTES
   static async validateFile(filePath: string, mimeType: string): Promise<void> {
     try {
       await fs.access(filePath);
@@ -181,12 +232,12 @@ export class FileUploadService {
 
     const buffer = await fs.readFile(filePath);
 
-    // Controllo dimensione minima
+    // CONTROLLO DIMENSIONE MINIMA
     if (buffer.length < 10) {
       throw new CustomError("File too small or corrupted", 400);
     }
 
-    // Validazione magic bytes
+    // VALIDAZIONE MAGIC BYTES
     const isValidMagicBytes = this.validateMagicBytes(buffer, mimeType);
     if (!isValidMagicBytes) {
       throw new CustomError(
@@ -199,7 +250,7 @@ export class FileUploadService {
       try {
         const metadata = await sharp(buffer).metadata();
 
-        // Controlli dimensioni immagine
+        // CONTROLLI DIMENSIONI IMMAGINE
         if (!metadata.width || !metadata.height) {
           throw new CustomError("Invalid image dimensions", 400);
         }
@@ -216,16 +267,16 @@ export class FileUploadService {
       }
     }
 
-    // Scan contenuto sospetto
+    // SCAN CONTENUTO SOSPETTO
     await this.scanSuspiciousContent(buffer);
 
-    // Antivirus scan in produzione
+    // ANTIVIRUS SCAN IN PRODUZIONE
     if (process.env.NODE_ENV === "production") {
       await this.scanForMalware(filePath);
     }
   }
 
-  // Validazione magic bytes
+  // VALIDAZIONE MAGIC BYTES
   private static validateMagicBytes(buffer: Buffer, mimeType: string): boolean {
     const getExpectedMagicBytes = (mime: string): number[] | null => {
       if (mime.includes("jpeg") || mime.includes("jpg"))
@@ -240,16 +291,16 @@ export class FileUploadService {
     };
 
     const expectedBytes = getExpectedMagicBytes(mimeType);
-    if (!expectedBytes) return true; // Skip se non abbiamo magic bytes definiti
+    if (!expectedBytes) return true; // SKIP SE NON ABBIAMO MAGIC BYTES DEFINITI
 
     return expectedBytes.every((byte, index) => buffer[index] === byte);
   }
 
-  // Scan contenuto sospetto
+  // SCAN CONTENUTO SOSPETTO
   private static async scanSuspiciousContent(buffer: Buffer): Promise<void> {
     const content = buffer.toString("utf8", 0, Math.min(buffer.length, 2048));
 
-    // Pattern sospetti
+    // PATTERN SOSPETTI
     const suspiciousPatterns = [
       /<script[\s\S]*?<\/script>/gi,
       /javascript:/gi,
@@ -270,35 +321,24 @@ export class FileUploadService {
     }
   }
 
-  // Antivirus scan (implementazione base)
+  // ANTIVIRUS SCAN (IMPLEMENTAZIONE BASE)
   private static async scanForMalware(filePath: string): Promise<void> {
-    // In produzione, integrare con ClamAV o servizio simile
-    // Esempio con ClamAV:
-    /*
-    const { NodeClam } = require('clamscan');
-    const clamscan = await new NodeClam().init({
-      removeInfected: false,
-      quarantineInfected: false,
-      debugMode: false
-    });
-    
-    const { isInfected, file, viruses } = await clamscan.scanFile(filePath);
-    
-    if (isInfected) {
-      throw new CustomError(`Malware detected: ${viruses.join(', ')}`, 400);
-    }
-    */
+    // IN PRODUZIONE, INTEGRARE CON CLAMAV O SERVIZIO SIMILE
     console.log(`Antivirus scan for: ${filePath} - OK`);
   }
 
-  // Upload con validazioni di sicurezza
+  // ===========================================
+  //             IMAGE UPLOAD
+  // ===========================================
+
+  // UPLOAD IMMAGINI CON VALIDAZIONI DI SICUREZZA
   static async uploadImage(
     filePath: string,
     originalName: string,
     folder: string = "products",
     userId?: string
   ): Promise<ProcessedImageSizes> {
-    // Sanitizza folder name
+    // SANITIZZA FOLDER NAME
     const sanitizedFolder = folder
       .replace(/[^a-zA-Z0-9-_]/g, "")
       .substring(0, 50);
@@ -307,7 +347,7 @@ export class FileUploadService {
 
     const publicId = `${sanitizedFolder}/${crypto.randomUUID()}`;
 
-    // Limita dimensioni array
+    // DIMENSIONI IMMAGINI
     const sizes = ["thumbnail", "small", "medium", "large"] as const;
     const dimensions = {
       thumbnail: { width: 150, height: 150 },
@@ -319,24 +359,24 @@ export class FileUploadService {
     const results: ProcessedImageSizes = {} as ProcessedImageSizes;
 
     try {
-      // Upload originale con trasformazioni di sicurezza
+      // UPLOAD ORIGINALE CON TRASFORMAZIONI DI SICUREZZA
       const originalUpload = await cloudinary.uploader.upload(filePath, {
         public_id: `${publicId}-original`,
         folder: sanitizedFolder,
         resource_type: "image",
         quality: "auto",
         format: "auto",
-        // Rimuove metadati EXIF per privacy
+        // RIMUOVE METADATI EXIF PER PRIVACY
         strip_metadata: true,
-        // Previene SVG con script
+        // PREVIENE SVG CON SCRIPT
         invalidate: true,
-        // Limiti aggiuntivi
+        // LIMITI AGGIUNTIVI
         transformation: [{ quality: "auto:good" }, { fetch_format: "auto" }],
       });
 
       results.original = originalUpload.secure_url;
 
-      // Genera resize con controlli sicurezza
+      // GENERA RESIZE CON CONTROLLI SICUREZZA
       for (const size of sizes) {
         const { width, height } = dimensions[size];
 
@@ -349,9 +389,9 @@ export class FileUploadService {
           .jpeg({
             quality: 85,
             progressive: true,
-            mozjpeg: true, // Migliore compressione
+            mozjpeg: true, // MIGLIORE COMPRESSIONE
           })
-          .removeAlpha() // Rimuove canale alpha per sicurezza
+          .removeAlpha() // RIMUOVE CANALE ALPHA PER SICUREZZA
           .toBuffer();
 
         const resizedUpload = await cloudinary.uploader.upload(
@@ -367,7 +407,7 @@ export class FileUploadService {
         results[size] = resizedUpload.secure_url;
       }
 
-      // Log sicurezza
+      // LOG SICUREZZA
       console.log(
         `Secure image upload completed: ${publicId} by user ${
           userId || "anonymous"
@@ -377,14 +417,86 @@ export class FileUploadService {
       console.error(`Upload error for ${publicId}:`, error);
       throw new CustomError("Upload failed - security validation error", 500);
     } finally {
-      // Cleanup sempre
+      // CLEANUP SEMPRE
       await fs.unlink(filePath).catch(() => {});
     }
 
     return results;
   }
 
-  // Upload digitale con controlli di sicurezza
+  // UPLOAD MULTIPLO PER GALLERIA PRODOTTO
+  static async uploadProductGallery(
+    files: Express.Multer.File[],
+    productId: string,
+    userId?: string
+  ): Promise<void> {
+    if (files.length === 0) return;
+
+    // VALIDAZIONE PRODUCT ID
+    const sanitizedProductId = productId.replace(/[^a-zA-Z0-9-]/g, "");
+    if (sanitizedProductId !== productId || productId.length > 36) {
+      throw new CustomError("Invalid product ID", 400);
+    }
+
+    // VERIFICA ESISTENZA PRODOTTO
+    const product = await prisma.product.findUnique({
+      where: { id: productId },
+    });
+
+    if (!product) {
+      throw new CustomError("Product not found", 404);
+    }
+
+    const uploadPromises = files.map(async (file, index) => {
+      try {
+        const imageSizes = await this.uploadImage(
+          file.path,
+          file.originalname,
+          `products/${productId}`,
+          userId
+        );
+
+        // GENERA ALT TEXT SICURO
+        const baseAltText = file.originalname
+          .split(".")[0]
+          .replace(/[^a-zA-Z0-9\s-]/g, "")
+          .substring(0, 100);
+
+        // SALVA NEL DATABASE
+        await prisma.productImage.create({
+          data: {
+            productId,
+            url: imageSizes.large, // USA VERSIONE LARGE COME PRINCIPALE
+            altText: `${baseAltText} - Image ${index + 1}`,
+            sortOrder: index,
+            isMain: index === 0, // PRIMA IMMAGINE = PRINCIPALE
+          },
+        });
+
+        console.log(
+          `Product gallery image uploaded: ${
+            imageSizes.large
+          } for product ${productId} by user ${userId || "anonymous"}`
+        );
+
+        return imageSizes;
+      } catch (error) {
+        console.error(
+          `Failed to upload gallery image ${index} for product ${productId}:`,
+          error
+        );
+        throw new CustomError(`Failed to upload image ${index + 1}`, 500);
+      }
+    });
+
+    await Promise.all(uploadPromises);
+  }
+
+  // ===========================================
+  //            DIGITAL FILE UPLOAD
+  // ===========================================
+
+  // UPLOAD FILE DIGITALI CON CONTROLLI DI SICUREZZA
   static async uploadDigitalFile(
     filePath: string,
     originalName: string,
@@ -404,12 +516,12 @@ export class FileUploadService {
         public_id: publicId,
         folder: sanitizedFolder,
         resource_type: "raw",
-        access_mode: "authenticated", // IMPORTANTE: richiede autenticazione
-        // Previene accesso diretto
+        access_mode: "authenticated", // IMPORTANTE: RICHIEDE AUTENTICAZIONE
+        // PREVIENE ACCESSO DIRETTO
         type: "authenticated",
       });
 
-      // Log sicurezza
+      // LOG SICUREZZA
       console.log(
         `Secure digital file upload: ${publicId} by user ${
           userId || "anonymous"
@@ -420,7 +532,7 @@ export class FileUploadService {
         id: result.public_id,
         url: result.secure_url,
         publicId: result.public_id,
-        originalName: originalName.substring(0, 255), // Limita lunghezza
+        originalName: originalName.substring(0, 255), // LIMITA LUNGHEZZA
         mimeType: "application/octet-stream",
         size: result.bytes,
       };
@@ -429,18 +541,22 @@ export class FileUploadService {
     }
   }
 
-  // Verifica permessi con controlli aggiuntivi
+  // ===========================================
+  //           SECURE DOWNLOAD SYSTEM
+  // ===========================================
+
+  // VERIFICA PERMESSI CON CONTROLLI AGGIUNTIVI
   private static async verifyDownloadPermission(
     fileId: string,
     userId: string,
     orderId?: string
   ): Promise<boolean> {
-    // Input validation
+    // INPUT VALIDATION
     if (!fileId || !userId || fileId.length > 255 || userId.length > 36) {
       return false;
     }
 
-    // Sanitizza input per prevenire injection
+    // SANITIZZA INPUT PER PREVENIRE INJECTION
     const sanitizedFileId = fileId.replace(/[^a-zA-Z0-9-_.]/g, "");
     const sanitizedUserId = userId.replace(/[^a-zA-Z0-9-]/g, "");
 
@@ -456,13 +572,13 @@ export class FileUploadService {
 
       if (!product) return false;
 
-      // Controllo ordine con più validazioni
+      // CONTROLLO ORDINE CON PIÙ VALIDAZIONI
       const order = await prisma.order.findFirst({
         where: {
           userId: sanitizedUserId,
           status: "COMPLETED",
           paymentStatus: "SUCCEEDED",
-          // Aggiungi controllo data ordine (es. non più vecchio di 1 anno)
+          // AGGIUNGI CONTROLLO DATA ORDINE (ES. NON PIÙ VECCHIO DI 1 ANNO)
           createdAt: {
             gte: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000),
           },
@@ -479,7 +595,7 @@ export class FileUploadService {
 
       if (!order) return false;
 
-      // Log tentativo accesso
+      // LOG TENTATIVO ACCESSO
       console.log(
         `Download permission verified: ${sanitizedFileId} for user ${sanitizedUserId}`
       );
@@ -491,7 +607,7 @@ export class FileUploadService {
     }
   }
 
-  // Genera firma più sicura
+  // GENERA FIRMA PIÙ SICURA
   private static generateDownloadSignature(
     fileId: string,
     userId: string,
@@ -502,12 +618,12 @@ export class FileUploadService {
       throw new CustomError("Invalid download configuration", 500);
     }
 
-    // Include più dati nella firma per maggiore sicurezza
+    // INCLUDE PIÙ DATI NELLA FIRMA PER MAGGIORE SICUREZZA
     const data = `${fileId}:${userId}:${timestamp}:${process.env.NODE_ENV}`;
     return crypto.createHmac("sha256", secret).update(data).digest("hex");
   }
 
-  // Verifica firma con rate limiting
+  // VERIFICA FIRMA CON TIMING ATTACK PROTECTION
   static verifyDownloadSignature(
     fileId: string,
     userId: string,
@@ -522,14 +638,14 @@ export class FileUploadService {
       );
       const now = Math.floor(Date.now() / 1000);
 
-      // Verifica timing attack protection
+      // VERIFICA TIMING ATTACK PROTECTION
       const isValidSignature = crypto.timingSafeEqual(
         Buffer.from(signature, "hex"),
         Buffer.from(expectedSignature, "hex")
       );
 
       const isNotExpired = timestamp > now;
-      const isNotTooFarInFuture = timestamp < now + 60 * 60; // Max 1 ora nel futuro
+      const isNotTooFarInFuture = timestamp < now + 60 * 60; // MAX 1 ORA NEL FUTURO
 
       return isValidSignature && isNotExpired && isNotTooFarInFuture;
     } catch (error) {
@@ -538,7 +654,7 @@ export class FileUploadService {
     }
   }
 
-  // URL sicuro con rate limiting per utente
+  // URL SICURO CON RATE LIMITING PER UTENTE
   static async getSecureDownloadUrl(
     fileId: string,
     userId: string,
@@ -553,13 +669,13 @@ export class FileUploadService {
       throw new CustomError("Access denied", 403);
     }
 
-    // Controllo rate limiting per download
+    // CONTROLLO RATE LIMITING PER DOWNLOAD
     const downloadKey = `download:${userId}:${fileId}`;
     if (!this.checkDownloadRateLimit(downloadKey)) {
       throw new CustomError("Too many download attempts", 429);
     }
 
-    const timestamp = Math.floor(Date.now() / 1000) + 15 * 60; // 15 minuti
+    const timestamp = Math.floor(Date.now() / 1000) + 15 * 60; // 15 MINUTI
     const signature = this.generateDownloadSignature(fileId, userId, timestamp);
 
     const baseUrl = process.env.BASE_URL;
@@ -574,34 +690,14 @@ export class FileUploadService {
     )}&expires=${timestamp}&signature=${signature}`;
   }
 
-  // Rate limiting per download
-  private static downloadAttempts = new Map<string, number[]>();
+  // ===========================================
+  //            UTILITY METHODS
+  // ===========================================
 
-  private static checkDownloadRateLimit(key: string): boolean {
-    const now = Date.now();
-    const windowMs = 60 * 1000; // 1 minuto
-    const maxAttempts = 3; // Max 3 download per minuto per file
-
-    if (!this.downloadAttempts.has(key)) {
-      this.downloadAttempts.set(key, []);
-    }
-
-    const attempts = this.downloadAttempts.get(key)!;
-    const validAttempts = attempts.filter((time) => now - time < windowMs);
-
-    if (validAttempts.length >= maxAttempts) {
-      return false;
-    }
-
-    validAttempts.push(now);
-    this.downloadAttempts.set(key, validAttempts);
-    return true;
-  }
-
-  // Pulizia sicura file - rendi pubblico
+  // ESTRAI PUBLIC ID DA URL CLOUDINARY
   public static extractPublicIdFromUrl(url: string): string | null {
     try {
-      // Validazione URL
+      // VALIDAZIONE URL
       const urlObj = new URL(url);
       if (!urlObj.hostname.includes("cloudinary.com")) {
         throw new Error("Invalid Cloudinary URL");
@@ -619,7 +715,7 @@ export class FileUploadService {
       const folderParts = urlParts.slice(uploadIndex + 2, -1);
       const fullPublicId = [...folderParts, publicIdWithExtension].join("/");
 
-      // Sanitizza il public_id
+      // SANITIZZA IL PUBLIC_ID
       return fullPublicId.replace(/[^a-zA-Z0-9\-_\/]/g, "");
     } catch (error) {
       console.error("Error extracting public_id from URL:", error);
@@ -627,7 +723,7 @@ export class FileUploadService {
     }
   }
 
-  // Cleanup con controlli sicurezza
+  // CLEANUP CON CONTROLLI SICUREZZA
   static async cleanupUnusedFiles(): Promise<void> {
     console.log("Starting secure cleanup process...");
 
@@ -659,75 +755,7 @@ export class FileUploadService {
     );
   }
 
-  // Upload multiplo per galleria prodotto
-  static async uploadProductGallery(
-    files: Express.Multer.File[],
-    productId: string,
-    userId?: string
-  ): Promise<void> {
-    if (files.length === 0) return;
-
-    // Validazione productId
-    const sanitizedProductId = productId.replace(/[^a-zA-Z0-9-]/g, "");
-    if (sanitizedProductId !== productId || productId.length > 36) {
-      throw new CustomError("Invalid product ID", 400);
-    }
-
-    // Verifica esistenza prodotto
-    const product = await prisma.product.findUnique({
-      where: { id: productId },
-    });
-
-    if (!product) {
-      throw new CustomError("Product not found", 404);
-    }
-
-    const uploadPromises = files.map(async (file, index) => {
-      try {
-        const imageSizes = await this.uploadImage(
-          file.path,
-          file.originalname,
-          `products/${productId}`,
-          userId
-        );
-
-        // Genera alt text sicuro
-        const baseAltText = file.originalname
-          .split(".")[0]
-          .replace(/[^a-zA-Z0-9\s-]/g, "")
-          .substring(0, 100);
-
-        // Salva nel database
-        await prisma.productImage.create({
-          data: {
-            productId,
-            url: imageSizes.large, // Usa versione large come principale
-            altText: `${baseAltText} - Image ${index + 1}`,
-            sortOrder: index,
-            isMain: index === 0, // Prima immagine = principale
-          },
-        });
-
-        console.log(
-          `Product gallery image uploaded: ${
-            imageSizes.large
-          } for product ${productId} by user ${userId || "anonymous"}`
-        );
-
-        return imageSizes;
-      } catch (error) {
-        console.error(
-          `Failed to upload gallery image ${index} for product ${productId}:`,
-          error
-        );
-        throw new CustomError(`Failed to upload image ${index + 1}`, 500);
-      }
-    });
-
-    await Promise.all(uploadPromises);
-  }
-
-  // Statistiche sicure
+  // STATISTICHE SICURE
   static async getStorageStats(): Promise<{
     totalImages: number;
     totalFiles: number;

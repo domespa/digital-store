@@ -1,5 +1,10 @@
 import { UserRole } from "../generated/prisma";
-// TIPI PER UTENTIFICAZIONE
+
+// ===========================================
+//            REQUEST/RESPONSE TYPES
+// ===========================================
+
+// TIPI PER AUTENTIFICAZIONE
 export interface LoginRequest {
   email: string;
   password: string;
@@ -19,6 +24,10 @@ export interface AuthResponse {
   token?: string;
 }
 
+// ===========================================
+//               USER TYPES
+// ===========================================
+
 export interface UserProfile {
   id: string;
   email: string;
@@ -26,7 +35,12 @@ export interface UserProfile {
   lastName: string;
   role: UserRole;
   createdAt: Date;
+  emailVerified: boolean; // Aggiunto per compatibilità con il middleware
 }
+
+// ===========================================
+//               JWT TYPES
+// ===========================================
 
 // SETUP JWT
 export interface JwtPayload {
@@ -37,10 +51,18 @@ export interface JwtPayload {
   exp?: number;
 }
 
+// ===========================================
+//            REQUEST EXTENSIONS
+// ===========================================
+
 // USER AUTENTICATO
 export interface AuthenticatedRequest extends Express.Request {
   user?: UserProfile;
 }
+
+// ===========================================
+//              ERROR CLASSES
+// ===========================================
 
 // ERRORE DI LOGIN CON ERRORE PERSONALIZZATO
 export class AuthError extends Error {

@@ -17,11 +17,11 @@ export const handleValidationErrors = (
   if (!errors.isEmpty()) {
     return res.status(400).json({
       success: false,
-      messagge: "Validation failed",
+      message: "Validation failed",
       errors: errors.array().map((error) => ({
-        field: error.type === "field" ? (errors as any).path : "unknow",
+        field: "param" in error ? error.param : "unknown",
         message: error.msg,
-        value: error.type === "field" ? (errors as any).value : undefined,
+        value: "value" in error ? error.value : undefined,
       })),
     });
   }

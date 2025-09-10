@@ -3,24 +3,36 @@ import { PrismaClient } from "../generated/prisma";
 
 const prisma = new PrismaClient();
 
+// ===========================================
+//             TOKEN SERVICE CLASS
+// ===========================================
+
 export class TokenService {
+  // ===========================================
+  //            UTILITY METHODS
+  // ===========================================
+
   // GENERAZIONE TOKEN SICURO
   static generateSecureToken(): string {
     return crypto.randomBytes(32).toString("hex");
   }
 
-  // CREA TOKEN
+  // ===========================================
+  //         PASSWORD RESET TOKENS
+  // ===========================================
+
+  // CREA TOKEN RESET PASSWORD
   static async createPasswordResetToken(
     userId: string
   ): Promise<{ token: string; expiresAt: Date }> {
-    // ELIMINA TOKEN GIA ESISTENTI
+    // ELIMINA TOKEN GIÀ ESISTENTI
     await prisma.passwordResetToken.deleteMany({
       where: { userId },
     });
 
     const token = this.generateSecureToken();
     const expiresAt = new Date();
-    expiresAt.setHours(expiresAt.getHours() + 1); // 1H
+    expiresAt.setHours(expiresAt.getHours() + 1); // 1 ORA
 
     await prisma.passwordResetToken.create({
       data: {
@@ -33,7 +45,7 @@ export class TokenService {
     return { token, expiresAt };
   }
 
-  // VERIFICA TOKEN RESET
+  // VERIFICA TOKEN RESET PASSWORD
   static async verifyPasswordResetToken(token: string): Promise<string | null> {
     const tokenRecord = await prisma.passwordResetToken.findUnique({
       where: { token },
@@ -51,7 +63,7 @@ export class TokenService {
     return tokenRecord.userId;
   }
 
-  // TOKEN USATO
+  // MARCA TOKEN COME USATO
   static async markTokenAsUsed(token: string): Promise<void> {
     await prisma.passwordResetToken.update({
       where: { token },
@@ -59,16 +71,20 @@ export class TokenService {
     });
   }
 
-  // TOKEN PER VERIFICA EMAIL
+  // ===========================================
+  //       EMAIL VERIFICATION TOKENS
+  // ===========================================
+
+  // CREA TOKEN PER VERIFICA EMAIL
   static async createEmailVerificationToken(userId: string): Promise<string> {
-    // Elimina token esistenti
+    // ELIMINA TOKEN ESISTENTI
     await prisma.emailVerificationToken.deleteMany({
       where: { userId },
     });
 
     const token = this.generateSecureToken();
     const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 7); // Scade in 7 giorni
+    expiresAt.setDate(expiresAt.getDate() + 7); // SCADE IN 7 GIORNI
 
     await prisma.emailVerificationToken.create({
       data: {
@@ -81,7 +97,7 @@ export class TokenService {
     return token;
   }
 
-  // CREA TOKEN EMAIL
+  // VERIFICA TOKEN EMAIL
   static async verifyEmailToken(token: string): Promise<string | null> {
     const tokenRecord = await prisma.emailVerificationToken.findUnique({
       where: { token },
@@ -95,7 +111,7 @@ export class TokenService {
       return null;
     }
 
-    // USATO
+    // MARCA COME USATO E VERIFICA EMAIL
     await Promise.all([
       prisma.emailVerificationToken.update({
         where: { token },
@@ -109,6 +125,10 @@ export class TokenService {
 
     return tokenRecord.userId;
   }
+
+  // ===========================================
+  //            CLEANUP METHODS
+  // ===========================================
 
   // ELIMINA TOKEN SCADUTI
   static async cleanupExpiredTokens(): Promise<void> {

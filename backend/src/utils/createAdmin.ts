@@ -3,12 +3,20 @@ import { PrismaClient, UserRole } from "../generated/prisma";
 
 const prisma = new PrismaClient();
 
+// ===========================================
+//            ADMIN CREATION SCRIPT
+// ===========================================
+
 // Script per creare il primo utente ADMIN
 // Uso: npm run create-admin
 
 async function createFirstAdmin() {
   try {
     console.log("🔧 Creating first admin user...");
+
+    // ===========================================
+    //              ADMIN DATA
+    // ===========================================
 
     // DATI ADMIN
     const adminData = {
@@ -18,7 +26,11 @@ async function createFirstAdmin() {
       lastName: "User",
     };
 
-    // CONTROLLO SE ESISTE
+    // ===========================================
+    //          EXISTENCE CHECKS
+    // ===========================================
+
+    // CONTROLLO SE ESISTE GIÀ UN ADMIN
     const existingAdmin = await prisma.user.findFirst({
       where: { role: UserRole.ADMIN },
     });
@@ -28,7 +40,7 @@ async function createFirstAdmin() {
       return;
     }
 
-    // CONTROLLO SE ESISTE COME USER
+    // CONTROLLO SE ESISTE COME USER NORMALE
     const existingUser = await prisma.user.findUnique({
       where: { email: adminData.email.toLowerCase() },
     });
@@ -36,7 +48,7 @@ async function createFirstAdmin() {
     if (existingUser) {
       console.log("🔄 Email exists as USER, promoting to ADMIN...");
 
-      // SE ESISTE PROMUOVIAMOLO
+      // SE ESISTE PROMUOVIAMOLO AD ADMIN
       const promotedUser = await prisma.user.update({
         where: { id: existingUser.id },
         data: { role: UserRole.ADMIN },
@@ -53,7 +65,11 @@ async function createFirstAdmin() {
       return promotedUser;
     }
 
-    // CREAZIONE NUVO ADMIN
+    // ===========================================
+    //          CREATE NEW ADMIN
+    // ===========================================
+
+    // CREAZIONE NUOVO ADMIN
     const hashedPassword = await bcrypt.hash(adminData.password, 12);
 
     const newAdmin = await prisma.user.create({
@@ -63,6 +79,7 @@ async function createFirstAdmin() {
         firstName: adminData.firstName,
         lastName: adminData.lastName,
         role: UserRole.ADMIN,
+        emailVerified: true, // Admin email pre-verificata
       },
       select: {
         id: true,
@@ -73,6 +90,10 @@ async function createFirstAdmin() {
         createdAt: true,
       },
     });
+
+    // ===========================================
+    //            SUCCESS OUTPUT
+    // ===========================================
 
     console.log("✅ First admin created successfully:");
     console.log(`📧 Email: ${newAdmin.email}`);
@@ -95,7 +116,11 @@ async function createFirstAdmin() {
   }
 }
 
-// ESECUZIONE SCRIPT PER CREAZIONE
+// ===========================================
+//            SCRIPT EXECUTION
+// ===========================================
+
+// ESECUZIONE SCRIPT PER CREAZIONE ADMIN
 if (require.main === module) {
   createFirstAdmin()
     .then(() => {

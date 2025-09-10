@@ -9,14 +9,15 @@ import {
   UserProfile,
   JwtPayload,
 } from "../types/auth";
-import {
-  sendEmailVerificationEmail,
-  sendPasswordResetEmail,
-  sendPasswordChangedNotificationEmail,
-} from "../services/emailService";
+import EmailService from "../services/emailService";
 import { TokenService } from "../services/tokenService";
 
 const prisma = new PrismaClient();
+const emailService = new EmailService();
+
+// ===========================================
+//               HELPER FUNCTIONS
+// ===========================================
 
 // GENERA TOKEN PER USER
 const generateToken = (user: UserProfile): string => {
@@ -37,9 +38,12 @@ const generateToken = (user: UserProfile): string => {
   });
 };
 
+// ===========================================
+//            AUTHENTICATION ENDPOINTS
+// ===========================================
+
 //-------------- REGISTRAZIONE UTENTE
 // POST /api/auth/register
-
 export const register = async (req: Request, res: Response) => {
   try {
     const { email, password, firstName, lastName }: RegisterRequest = req.body;
@@ -86,7 +90,7 @@ export const register = async (req: Request, res: Response) => {
       const verificationToken = await TokenService.createEmailVerificationToken(
         newUser.id
       );
-      await sendEmailVerificationEmail(
+      await emailService.sendEmailVerificationEmail(
         newUser.email,
         newUser.firstName,
         verificationToken
@@ -182,6 +186,7 @@ export const login = async (req: Request, res: Response) => {
       lastName: user.lastName,
       createdAt: user.createdAt,
       role: user.role,
+      emailVerified: user.emailVerified, // Aggiunto campo mancante
     };
 
     // GENERA TOKEN
@@ -204,7 +209,11 @@ export const login = async (req: Request, res: Response) => {
   }
 };
 
-//-------------- RESET PASSWROD
+// ===========================================
+//           PASSWORD RESET ENDPOINTS
+// ===========================================
+
+//-------------- RESET PASSWORD
 export const requestPasswordReset = async (req: Request, res: Response) => {
   try {
     const { email } = req.body;
@@ -222,7 +231,11 @@ export const requestPasswordReset = async (req: Request, res: Response) => {
 
     const { token } = await TokenService.createPasswordResetToken(user.id);
 
-    await sendPasswordResetEmail(user.email, user.firstName, token);
+    await emailService.sendPasswordResetEmail(
+      user.email,
+      user.firstName,
+      token
+    );
 
     console.log(`Password reset requested for user: ${user.email}`);
 
@@ -277,7 +290,10 @@ export const resetPassword = async (req: Request, res: Response) => {
 
     await TokenService.markTokenAsUsed(token);
 
-    await sendPasswordChangedNotificationEmail(user.email, user.firstName);
+    await emailService.sendPasswordChangedNotificationEmail(
+      user.email,
+      user.firstName
+    );
 
     console.log(`Password reset completed for user: ${user.email}`);
 
@@ -293,6 +309,10 @@ export const resetPassword = async (req: Request, res: Response) => {
     });
   }
 };
+
+// ===========================================
+//           EMAIL VERIFICATION ENDPOINTS
+// ===========================================
 
 // VERIFICA EMAIL
 export const verifyEmail = async (req: Request, res: Response) => {
@@ -358,7 +378,7 @@ export const resendEmailVerification = async (req: Request, res: Response) => {
       user.id
     );
 
-    await sendEmailVerificationEmail(
+    await emailService.sendEmailVerificationEmail(
       user.email,
       user.firstName,
       verificationToken
@@ -376,6 +396,10 @@ export const resendEmailVerification = async (req: Request, res: Response) => {
     });
   }
 };
+
+// ===========================================
+//           PASSWORD CHANGE ENDPOINT
+// ===========================================
 
 export const changePassword = async (req: Request, res: Response) => {
   try {
@@ -421,7 +445,10 @@ export const changePassword = async (req: Request, res: Response) => {
       },
     });
 
-    await sendPasswordChangedNotificationEmail(user.email, user.firstName);
+    await emailService.sendPasswordChangedNotificationEmail(
+      user.email,
+      user.firstName
+    );
 
     res.json({
       success: true,
@@ -436,9 +463,12 @@ export const changePassword = async (req: Request, res: Response) => {
   }
 };
 
+// ===========================================
+//             PROFILE ENDPOINT
+// ===========================================
+
 //-------------- PROFILO USER
 // GET /api/auth/me
-
 export const getProfile = async (req: Request, res: Response) => {
   try {
     if (!req.user) {

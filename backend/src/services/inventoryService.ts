@@ -2,7 +2,16 @@ import { PrismaClient } from "../generated/prisma";
 
 const prisma = new PrismaClient();
 
+// ===========================================
+//          INVENTORY SERVICE CLASS
+// ===========================================
+
 export class InventoryService {
+  // ===========================================
+  //           STOCK AVAILABILITY
+  // ===========================================
+
+  // CONTROLLA DISPONIBILITÀ STOCK PER PRODOTTO/VARIANTE
   static async checkStockAvailability(
     productId: string,
     variantId?: string,
@@ -69,6 +78,60 @@ export class InventoryService {
     };
   }
 
+  // CONTROLLA DISPONIBILITÀ MULTIPLI PRODOTTI (CARRELLO)
+  static async checkMultipleAvailability(
+    items: Array<{
+      productId: string;
+      variantId?: string;
+      quantity: number;
+    }>
+  ) {
+    const results = [];
+
+    for (const item of items) {
+      try {
+        const availability = await this.checkStockAvailability(
+          item.productId,
+          item.variantId,
+          item.quantity
+        );
+
+        results.push({
+          productId: item.productId,
+          variantId: item.variantId,
+          requestedQuantity: item.quantity,
+          ...availability,
+        });
+      } catch (error) {
+        results.push({
+          productId: item.productId,
+          variantId: item.variantId,
+          requestedQuantity: item.quantity,
+          available: false,
+          currentStock: 0,
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+    }
+
+    const allAvailable = results.every((item) => item.available);
+
+    return {
+      allAvailable,
+      items: results,
+      summary: {
+        total: results.length,
+        available: results.filter((item) => item.available).length,
+        unavailable: results.filter((item) => !item.available).length,
+      },
+    };
+  }
+
+  // ===========================================
+  //           STOCK MANAGEMENT
+  // ===========================================
+
+  // RIDUCI STOCK (PER VENDITA)
   static async reduceStock(
     productId: string,
     variantId: string | undefined,
@@ -105,6 +168,7 @@ export class InventoryService {
     }
   }
 
+  // RIPRISTINA STOCK (PER CANCELLAZIONE ORDINE)
   static async restoreStock(
     productId: string,
     variantId: string | undefined,
@@ -128,83 +192,6 @@ export class InventoryService {
     });
 
     console.log(`✅ Stock restored: Product ${productId} (+${quantity})`);
-  }
-
-  static async getLowStockProducts(): Promise<
-    Array<{
-      id: string;
-      name: string;
-      currentStock: number;
-      threshold: number;
-      category?: string;
-    }>
-  > {
-    const products = await prisma.product.findMany({
-      where: {
-        isActive: true,
-        trackInventory: true,
-        stock: {
-          lte: prisma.product.fields.lowStockThreshold,
-        },
-      },
-      select: {
-        id: true,
-        name: true,
-        stock: true,
-        lowStockThreshold: true,
-        category: {
-          select: { name: true },
-        },
-      },
-      orderBy: { stock: "asc" },
-    });
-
-    return products.map((product) => ({
-      id: product.id,
-      name: product.name,
-      currentStock: product.stock,
-      threshold: product.lowStockThreshold,
-      category: product.category?.name,
-    }));
-  }
-
-  static async getInventoryStats() {
-    const [
-      totalProducts,
-      activeProducts,
-      lowStockCount,
-      outOfStockCount,
-      digitalProductsCount,
-    ] = await Promise.all([
-      prisma.product.count(),
-      prisma.product.count({ where: { isActive: true } }),
-      prisma.product.count({
-        where: {
-          isActive: true,
-          trackInventory: true,
-          stock: { lte: prisma.product.fields.lowStockThreshold },
-        },
-      }),
-      prisma.product.count({
-        where: {
-          isActive: true,
-          trackInventory: true,
-          stock: 0,
-        },
-      }),
-      prisma.product.count({
-        where: { isDigital: true },
-      }),
-    ]);
-
-    return {
-      totalProducts,
-      activeProducts,
-      lowStockCount,
-      outOfStockCount,
-      digitalProductsCount,
-      physicalProductsCount: totalProducts - digitalProductsCount,
-    };
   }
 
   // AGGIORNA STOCK MANUALMENTE
@@ -254,6 +241,8 @@ export class InventoryService {
       timestamp: new Date(),
     };
   }
+
+  // AGGIORNAMENTO STOCK IN MASSA
   static async bulkUpdateStock(
     updates: Array<{
       productId: string;
@@ -318,6 +307,49 @@ export class InventoryService {
     };
   }
 
+  // ===========================================
+  //            INVENTORY ALERTS
+  // ===========================================
+
+  // OTTIENI PRODOTTI CON STOCK BASSO
+  static async getLowStockProducts(): Promise<
+    Array<{
+      id: string;
+      name: string;
+      currentStock: number;
+      threshold: number;
+      category?: string;
+    }>
+  > {
+    const products = await prisma.product.findMany({
+      where: {
+        isActive: true,
+        trackInventory: true,
+        stock: {
+          lte: prisma.product.fields.lowStockThreshold,
+        },
+      },
+      select: {
+        id: true,
+        name: true,
+        stock: true,
+        lowStockThreshold: true,
+        category: {
+          select: { name: true },
+        },
+      },
+      orderBy: { stock: "asc" },
+    });
+
+    return products.map((product) => ({
+      id: product.id,
+      name: product.name,
+      currentStock: product.stock,
+      threshold: product.lowStockThreshold,
+      category: product.category?.name,
+    }));
+  }
+
   // OTTIENI PRODOTTI ESAURITI
   static async getOutOfStockProducts() {
     const products = await prisma.product.findMany({
@@ -349,91 +381,102 @@ export class InventoryService {
     }));
   }
 
-  // CHECK DISPONIBILITà CARRELLLO
-  static async checkMultipleAvailability(
-    items: Array<{
-      productId: string;
-      variantId?: string;
-      quantity: number;
-    }>
-  ) {
-    const results = [];
+  // ===========================================
+  //           INVENTORY STATISTICS
+  // ===========================================
 
-    for (const item of items) {
-      try {
-        const availability = await this.checkStockAvailability(
-          item.productId,
-          item.variantId,
-          item.quantity
-        );
-
-        results.push({
-          productId: item.productId,
-          variantId: item.variantId,
-          requestedQuantity: item.quantity,
-          ...availability,
-        });
-      } catch (error) {
-        results.push({
-          productId: item.productId,
-          variantId: item.variantId,
-          requestedQuantity: item.quantity,
-          available: false,
-          currentStock: 0,
-          error: error instanceof Error ? error.message : "Unknown error",
-        });
-      }
-    }
-
-    const allAvailable = results.every((item) => item.available);
+  // STATISTICHE INVENTARIO GENERALI
+  static async getInventoryStats() {
+    const [
+      totalProducts,
+      activeProducts,
+      lowStockCount,
+      outOfStockCount,
+      digitalProductsCount,
+    ] = await Promise.all([
+      prisma.product.count(),
+      prisma.product.count({ where: { isActive: true } }),
+      prisma.product.count({
+        where: {
+          isActive: true,
+          trackInventory: true,
+          stock: { lte: prisma.product.fields.lowStockThreshold },
+        },
+      }),
+      prisma.product.count({
+        where: {
+          isActive: true,
+          trackInventory: true,
+          stock: 0,
+        },
+      }),
+      prisma.product.count({
+        where: { isDigital: true },
+      }),
+    ]);
 
     return {
-      allAvailable,
-      items: results,
-      summary: {
-        total: results.length,
-        available: results.filter((item) => item.available).length,
-        unavailable: results.filter((item) => !item.available).length,
+      totalProducts,
+      activeProducts,
+      lowStockCount,
+      outOfStockCount,
+      digitalProductsCount,
+      physicalProductsCount: totalProducts - digitalProductsCount,
+    };
+  }
+
+  // STATISTICHE INVENTARIO DETTAGLIATE
+  static async getDetailedInventoryStats() {
+    const [basicStats, stockDistribution, recentlyUpdated] = await Promise.all([
+      // USA LA FUNZIONE ESISTENTE
+      this.getInventoryStats(),
+
+      // DISTRIBUZIONE STOCK
+      prisma.product.groupBy({
+        by: ["trackInventory"],
+        where: { isActive: true },
+        _count: true,
+        _sum: { stock: true },
+        _avg: { stock: true },
+      }),
+
+      // PRODOTTI AGGIORNATI DI RECENTE
+      prisma.product.findMany({
+        where: {
+          isActive: true,
+          trackInventory: true,
+          updatedAt: {
+            gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), // ULTIMI 7 GIORNI
+          },
+        },
+        select: {
+          id: true,
+          name: true,
+          stock: true,
+          updatedAt: true,
+        },
+        orderBy: { updatedAt: "desc" },
+        take: 10,
+      }),
+    ]);
+
+    return {
+      ...basicStats,
+      stockDistribution,
+      recentlyUpdated,
+      alerts: {
+        lowStock: basicStats.lowStockCount,
+        outOfStock: basicStats.outOfStockCount,
+        totalAlerts: basicStats.lowStockCount + basicStats.outOfStockCount,
       },
     };
   }
 
-  // STOCK BASSO SETUP
-  static async setLowStockThreshold(productId: string, threshold: number) {
-    const product = await prisma.product.findUnique({
-      where: { id: productId },
-    });
+  // ===========================================
+  //           PRODUCT STATUS & CONFIG
+  // ===========================================
 
-    if (!product) {
-      throw new Error("Product not found");
-    }
-
-    return await prisma.product.update({
-      where: { id: productId },
-      data: { lowStockThreshold: Math.max(0, threshold) },
-    });
-  }
-
-  // TRACKIN INVENTRARIO
-  static async toggleInventoryTracking(
-    productId: string,
-    trackInventory: boolean
-  ) {
-    const product = await prisma.product.findUnique({
-      where: { id: productId },
-    });
-
-    if (!product) {
-      throw new Error("Product not found");
-    }
-
-    return await prisma.product.update({
-      where: { id: productId },
-      data: { trackInventory },
-    });
-  }
-
-  // OTTIENI STATUS PRODOTTO
+  // OTTIENI STATUS STOCK PRODOTTO
   static async getProductStockStatus(productId: string) {
     const product = await prisma.product.findUnique({
       where: { id: productId },
@@ -483,52 +526,46 @@ export class InventoryService {
     };
   }
 
-  static async getDetailedInventoryStats() {
-    const [basicStats, stockDistribution, recentlyUpdated] = await Promise.all([
-      // Usa la tua funzione esistente
-      this.getInventoryStats(),
+  // IMPOSTA SOGLIA STOCK BASSO
+  static async setLowStockThreshold(productId: string, threshold: number) {
+    const product = await prisma.product.findUnique({
+      where: { id: productId },
+    });
 
-      // Distribuzione stock
-      prisma.product.groupBy({
-        by: ["trackInventory"],
-        where: { isActive: true },
-        _count: true,
-        _sum: { stock: true },
-        _avg: { stock: true },
-      }),
+    if (!product) {
+      throw new Error("Product not found");
+    }
 
-      // Prodotti aggiornati di recente
-      prisma.product.findMany({
-        where: {
-          isActive: true,
-          trackInventory: true,
-          updatedAt: {
-            gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), // Ultimi 7 giorni
-          },
-        },
-        select: {
-          id: true,
-          name: true,
-          stock: true,
-          updatedAt: true,
-        },
-        orderBy: { updatedAt: "desc" },
-        take: 10,
-      }),
-    ]);
-
-    return {
-      ...basicStats,
-      stockDistribution,
-      recentlyUpdated,
-      alerts: {
-        lowStock: basicStats.lowStockCount,
-        outOfStock: basicStats.outOfStockCount,
-        totalAlerts: basicStats.lowStockCount + basicStats.outOfStockCount,
-      },
-    };
+    return await prisma.product.update({
+      where: { id: productId },
+      data: { lowStockThreshold: Math.max(0, threshold) },
+    });
   }
-  ///------- TEST --------//
+
+  // ATTIVA/DISATTIVA TRACKING INVENTARIO
+  static async toggleInventoryTracking(
+    productId: string,
+    trackInventory: boolean
+  ) {
+    const product = await prisma.product.findUnique({
+      where: { id: productId },
+    });
+
+    if (!product) {
+      throw new Error("Product not found");
+    }
+
+    return await prisma.product.update({
+      where: { id: productId },
+      data: { trackInventory },
+    });
+  }
+
+  // ===========================================
+  //             TESTING & SIMULATION
+  // ===========================================
+
+  // SIMULA VENDITA (PER TEST)
   static async simulateSale(
     productId: string,
     quantity: number = 1,

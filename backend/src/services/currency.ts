@@ -1,6 +1,10 @@
 import axios from "axios";
 import NodeCache from "node-cache";
 
+// ===========================================
+//               TYPES & INTERFACES
+// ===========================================
+
 export interface CurrencyConfig {
   code: string;
   symbol: string;
@@ -14,7 +18,11 @@ export interface ExchangeRates {
   timestamp: number;
 }
 
-// VALUTE
+// ===========================================
+//            SUPPORTED CURRENCIES
+// ===========================================
+
+// VALUTE SUPPORTATE CON CONFIGURAZIONE
 export const SUPPORTED_CURRENCIES: Record<string, CurrencyConfig> = {
   EUR: { code: "EUR", symbol: "€", name: "Euro", flag: "🇪🇺" },
   USD: { code: "USD", symbol: "$", name: "US Dollar", flag: "🇺🇸" },
@@ -28,18 +36,26 @@ export const SUPPORTED_CURRENCIES: Record<string, CurrencyConfig> = {
   DKK: { code: "DKK", symbol: "kr", name: "Danish Krone", flag: "🇩🇰" },
 };
 
+// ===========================================
+//           CURRENCY SERVICE CLASS
+// ===========================================
+
 export class CurrencyService {
   private cache: NodeCache;
   private fallbackRates: Record<string, Record<string, number>>;
 
   constructor() {
-    // CACHE UN ORA
+    // ===========================================
+    //              INITIALIZATION
+    // ===========================================
+
+    // CACHE CON TTL DI UN'ORA
     this.cache = new NodeCache({
       stdTTL: parseInt(process.env.CURRENCY_CACHE_TTL || "3600"),
       checkperiod: 600,
     });
 
-    // SE LE API NON VANNO
+    // TASSI DI FALLBACK SE LE API NON FUNZIONANO
     this.fallbackRates = {
       EUR: {
         USD: 1.1,
@@ -77,7 +93,11 @@ export class CurrencyService {
     };
   }
 
-  // RILEVIAMO VALUTA DA IP
+  // ===========================================
+  //             UTILITY METHODS
+  // ===========================================
+
+  // RILEVA VALUTA DA CODICE PAESE
   static detectCurrencyFromCountry(country: string): string {
     const currencyMap: Record<string, string> = {
       US: "USD",
@@ -98,13 +118,17 @@ export class CurrencyService {
     return currencyMap[country] || "EUR";
   }
 
-  // OTTENIAMO I TASSI DA API
+  // ===========================================
+  //            EXCHANGE RATE FETCHING
+  // ===========================================
+
+  // OTTIENI TASSI DI CAMBIO DA API ESTERNE
   private async fetchExchangeRates(
     baseCurrency: string = "EUR"
   ): Promise<ExchangeRates | null> {
     const cacheKey = `rates_${baseCurrency}`;
 
-    // Controlla cache prima
+    // CONTROLLA CACHE PRIMA
     const cached = this.cache.get<ExchangeRates>(cacheKey);
     if (cached) {
       console.log(`📊 Using cached rates for ${baseCurrency}`);
@@ -115,6 +139,7 @@ export class CurrencyService {
       const provider = process.env.EXCHANGE_API_PROVIDER || "exchangerate";
       let response;
 
+      // SELEZIONA PROVIDER API
       switch (provider) {
         case "fixer":
           response = await this.fetchFromFixer(baseCurrency);
@@ -129,7 +154,7 @@ export class CurrencyService {
       }
 
       if (response) {
-        // Salva in cache
+        // SALVA IN CACHE
         this.cache.set(cacheKey, response);
         console.log(
           `💰 Fresh rates loaded for ${baseCurrency} from ${provider}`
@@ -143,7 +168,7 @@ export class CurrencyService {
     return null;
   }
 
-  // EXCHANGERATE
+  // API EXCHANGERATE-API.COM (GRATUITA)
   private async fetchFromExchangeRate(
     baseCurrency: string
   ): Promise<ExchangeRates | null> {
@@ -162,7 +187,7 @@ export class CurrencyService {
     }
   }
 
-  // FIXER.IO
+  // API FIXER.IO (RICHIEDE API KEY)
   private async fetchFromFixer(
     baseCurrency: string
   ): Promise<ExchangeRates | null> {
@@ -186,7 +211,7 @@ export class CurrencyService {
     return null;
   }
 
-  // CURRENCYAPI
+  // API CURRENCYAPI.COM (RICHIEDE API KEY)
   private async fetchFromCurrencyAPI(
     baseCurrency: string
   ): Promise<ExchangeRates | null> {
@@ -198,7 +223,7 @@ export class CurrencyService {
       const url = `https://api.currencyapi.com/v3/latest?apikey=${apiKey}&base_currency=${baseCurrency}&currencies=${currencies}`;
       const response = await axios.get(url, { timeout: 5000 });
 
-      // Trasforma formato CurrencyAPI in nostro formato
+      // TRASFORMA FORMATO CURRENCYAPI NEL NOSTRO FORMATO
       const rates: Record<string, number> = {};
       for (const [currency, data] of Object.entries(
         response.data.data as Record<string, any>
@@ -217,7 +242,11 @@ export class CurrencyService {
     return null;
   }
 
-  // COVNERTIAMO IL PREZZO
+  // ===========================================
+  //            CONVERSION METHODS
+  // ===========================================
+
+  // CONVERTI PREZZO TRA VALUTE
   async convertPrice(
     amount: number,
     fromCurrency: string,
@@ -229,7 +258,7 @@ export class CurrencyService {
     source: "api" | "fallback" | "same";
     timestamp: number;
   }> {
-    // UGUALE
+    // STESSA VALUTA
     if (fromCurrency === toCurrency) {
       return {
         convertedAmount: amount,
@@ -239,7 +268,7 @@ export class CurrencyService {
       };
     }
 
-    // PROVA API REALTIME
+    // PROVA API REAL-TIME
     const apiRates = await this.fetchExchangeRates(fromCurrency);
 
     if (apiRates && apiRates.rates[toCurrency]) {
@@ -256,7 +285,7 @@ export class CurrencyService {
       };
     }
 
-    // FALLBACK
+    // USA TASSI DI FALLBACK
     console.warn(
       `⚠️  Using fallback rates for ${fromCurrency} -> ${toCurrency}`
     );
@@ -275,7 +304,7 @@ export class CurrencyService {
       };
     }
 
-    // NN
+    // NESSUN TASSO TROVATO
     console.error(
       `❌ No conversion rate found for ${fromCurrency} -> ${toCurrency}`
     );
@@ -287,7 +316,7 @@ export class CurrencyService {
     };
   }
 
-  // CONVERTIAMO I PREZZI
+  // CONVERTI LISTA DI PREZZI
   async convertPriceList(
     items: Array<{ amount: number; currency: string }>,
     targetCurrency: string
@@ -318,12 +347,16 @@ export class CurrencyService {
     return results;
   }
 
-  // OTTENIAMO TUTTE LE VALUTE
+  // ===========================================
+  //            FORMATTING METHODS
+  // ===========================================
+
+  // OTTIENI TUTTE LE VALUTE SUPPORTATE
   getSupportedCurrencies(): CurrencyConfig[] {
     return Object.values(SUPPORTED_CURRENCIES);
   }
 
-  // FORMATTAZIONE PREZZO CON SIMBOLO CORRETTO
+  // FORMATTA PREZZO CON SIMBOLO CORRETTO E LOCALE
   formatPrice(
     amount: number,
     currency: string,
@@ -340,15 +373,22 @@ export class CurrencyService {
         maximumFractionDigits: 2,
       }).format(amount);
     } catch (error) {
+      // FALLBACK SE INTL NON FUNZIONA
       return `${currencyConfig.symbol}${amount.toFixed(2)}`;
     }
   }
+
+  // ===========================================
+  //             CACHE MANAGEMENT
+  // ===========================================
+
+  // PULISCI CACHE
   clearCache(): void {
     this.cache.flushAll();
     console.log("💾 Currency cache cleared");
   }
 
-  // STATS
+  // STATISTICHE CACHE
   getCacheStats(): { keys: number; hits: number; misses: number } {
     const stats = this.cache.getStats();
     return {
@@ -358,5 +398,9 @@ export class CurrencyService {
     };
   }
 }
+
+// ===========================================
+//              SINGLETON EXPORT
+// ===========================================
 
 export const currencyService = new CurrencyService();

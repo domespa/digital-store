@@ -1,3 +1,7 @@
+// ===========================================
+//            CUSTOM ERROR CLASS
+// ===========================================
+
 export class CustomError extends Error {
   public statusCode: number;
   public isOperational: boolean;
@@ -8,9 +12,14 @@ export class CustomError extends Error {
     this.statusCode = statusCode;
     this.isOperational = true;
 
+    // MANTIENI STACK TRACE PULITO
     Error.captureStackTrace(this, this.constructor);
   }
 }
+
+// ===========================================
+//           ERROR HELPER FUNCTIONS
+// ===========================================
 
 // HELPER ERRORI COMUNI
 export const createError = {
@@ -27,6 +36,11 @@ export const createError = {
     new CustomError(message, 500),
 };
 
+// ===========================================
+//           UTILITY FUNCTIONS
+// ===========================================
+
+// CONTROLLA SE ERRORE È OPERAZIONALE (GESTIBILE)
 export const isOperationalError = (error: Error): boolean => {
   if (error instanceof CustomError) {
     return error.isOperational;

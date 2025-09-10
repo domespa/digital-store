@@ -2,16 +2,29 @@ import { PrismaClient } from "../generated/prisma";
 
 const prisma = new PrismaClient();
 
+// ===========================================
+//           CATEGORY SERVICE CLASS
+// ===========================================
+
 export class CategoryService {
-  //SLUG
+  // ===========================================
+  //             UTILITY METHODS
+  // ===========================================
+
+  // GENERA SLUG DA NOME CATEGORIA
   static generateSlug(name: string): string {
     return name
       .toLowerCase()
-      .replace(/[^a-zA-Z0-9\s]/g, "")
-      .replace(/\s+/g, "-")
+      .replace(/[^a-zA-Z0-9\s]/g, "") // RIMUOVI CARATTERI SPECIALI
+      .replace(/\s+/g, "-") // SOSTITUISCI SPAZI CON TRATTINI
       .trim();
   }
 
+  // ===========================================
+  //            RETRIEVAL METHODS
+  // ===========================================
+
+  // OTTIENI CATEGORIA CON PRODOTTI
   static async getCategoryWithProducts(
     slug: string,
     includeInactive: boolean = false
@@ -41,6 +54,7 @@ export class CategoryService {
     });
   }
 
+  // OTTIENI ALBERO COMPLETO CATEGORIE
   static async getCategoryTree() {
     const rootCategories = await prisma.category.findMany({
       where: {
@@ -67,6 +81,11 @@ export class CategoryService {
     return rootCategories;
   }
 
+  // ===========================================
+  //           NAVIGATION METHODS
+  // ===========================================
+
+  // OTTIENI BREADCRUMB PER CATEGORIA
   static async getCategoryBreadcrumb(
     categoryId: string
   ): Promise<Array<{ id: string; name: string; slug: string }>> {
@@ -77,6 +96,7 @@ export class CategoryService {
       select: { id: true, name: true, slug: true, parentId: true },
     });
 
+    // RISALI LA GERARCHIA FINO ALLA ROOT
     while (currentCategory) {
       breadcrumb.unshift({
         id: currentCategory.id,
@@ -95,5 +115,90 @@ export class CategoryService {
     }
 
     return breadcrumb;
+  }
+
+  // ===========================================
+  //            ADDITIONAL METHODS
+  // ===========================================
+
+  // OTTIENI TUTTE LE CATEGORIE ATTIVE
+  static async getAllActiveCategories() {
+    return await prisma.category.findMany({
+      where: { isActive: true },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        parentId: true,
+        sortOrder: true,
+      },
+      orderBy: { sortOrder: "asc" },
+    });
+  }
+
+  // CERCA CATEGORIE PER NOME
+  static async searchCategories(searchTerm: string) {
+    return await prisma.category.findMany({
+      where: {
+        isActive: true,
+        name: {
+          contains: searchTerm,
+          mode: "insensitive",
+        },
+      },
+      include: {
+        _count: {
+          select: { products: { where: { isActive: true } } },
+        },
+      },
+      orderBy: { name: "asc" },
+    });
+  }
+
+  // OTTIENI CATEGORIE POPOLARI (con più prodotti)
+  static async getPopularCategories(limit: number = 10) {
+    return await prisma.category.findMany({
+      where: { isActive: true },
+      include: {
+        _count: {
+          select: { products: { where: { isActive: true } } },
+        },
+      },
+      orderBy: {
+        products: {
+          _count: "desc",
+        },
+      },
+      take: limit,
+    });
+  }
+
+  // ===========================================
+  //             VALIDATION METHODS
+  // ===========================================
+
+  // CONTROLLA SE CATEGORIA ESISTE
+  static async categoryExists(slug: string): Promise<boolean> {
+    const category = await prisma.category.findUnique({
+      where: { slug },
+      select: { id: true },
+    });
+    return !!category;
+  }
+
+  // CONTROLLA SE SLUG È UNICO
+  static async isSlugUnique(
+    slug: string,
+    excludeId?: string
+  ): Promise<boolean> {
+    const existingCategory = await prisma.category.findUnique({
+      where: { slug },
+      select: { id: true },
+    });
+
+    if (!existingCategory) return true;
+    if (excludeId && existingCategory.id === excludeId) return true;
+
+    return false;
   }
 }
