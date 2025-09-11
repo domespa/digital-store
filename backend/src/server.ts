@@ -33,6 +33,14 @@ import wishlistRoutes from "./routes/wishlist";
 import searchRoutes from "./routes/search";
 import analyticsRoutes from "./routes/analytics";
 import { createNotificationRoutes } from "./routes/notification";
+import recommendationRoutes from "./routes/recommendation";
+
+// IMPORT SUPPORT SYSTEM
+import { setupSupportRoutes } from "./routes/support";
+import NotificationService from "./services/notificationService";
+import EmailService from "./services/emailService";
+import WebSocketService from "./services/websocketService";
+import { FileUploadService } from "./services/uploadService";
 
 // CARICHIAMO LE VARIABILI DI AMBIENTE
 dotenv.config();
@@ -99,6 +107,8 @@ app.get("/api/health", (req, res) => {
       payments: "operational",
       notifications: "operational",
       websocket: "enabled",
+      recommendations: "operational",
+      support: "operational", // NUOVO
     },
   });
 });
@@ -115,6 +125,9 @@ app.use("/api/products", productRoutes);
 
 // CATEGORIE (PUBBLICO)
 app.use("/api/categories", categoryRoutes);
+
+// RACCOMANDAZIONI (PUBBLICO + AUTENTICATO)
+app.use("/api/recommendations", recommendationRoutes);
 
 // RECENSIONI (PUBBLICO + AUTENTICATO)
 app.use("/api/reviews", reviewRateLimit.globalLimit, reviewRoutes);
@@ -146,6 +159,14 @@ app.use("/api/user", userRoutes);
 app.use("/api/inventory", inventoryRoutes);
 
 //=====================================================
+// ================ SUPPORT SYSTEM ====================
+//=====================================================
+
+// SUPPORT ROUTES (RICHIEDE AUTH)
+const supportRoutes = setupSupportRoutes(prisma);
+app.use("/api/support", supportRoutes);
+
+//=====================================================
 // ==================== ROUTE ADMIN ===================
 //=====================================================
 
@@ -167,12 +188,14 @@ app.get("/api/test-db", async (req, res) => {
       orderCount,
       reviewCount,
       notificationCount,
+      supportTicketCount,
     ] = await Promise.all([
       prisma.user.count(),
       prisma.product.count(),
       prisma.order.count(),
       prisma.review.count(),
-      prisma.notification.count().catch(() => 0), // Se la tabella non esiste ancora
+      prisma.notification.count().catch(() => 0),
+      prisma.supportTicket.count().catch(() => 0), // NUOVO
     ]);
 
     res.json({
@@ -183,6 +206,7 @@ app.get("/api/test-db", async (req, res) => {
         orders: orderCount,
         reviews: reviewCount,
         notifications: notificationCount,
+        supportTickets: supportTicketCount, // NUOVO
       },
       timestamp: new Date().toISOString(),
     });
@@ -218,6 +242,11 @@ app.get("/api/info", (req, res) => {
           "POST /api/reviews (guest)",
           "POST /api/reviews/:id/vote",
           "GET /api/wishlist/shared/:shareToken",
+          "GET /api/recommendations/similar/:productId",
+          "GET /api/recommendations/trending",
+          "GET /api/recommendations/frequently-bought-together/:productId",
+          "GET /api/recommendations/bulk/:productIds",
+          "GET /api/recommendations/health",
         ],
         authenticated: [
           "GET /api/user/profile",
@@ -246,6 +275,19 @@ app.get("/api/info", (req, res) => {
           "PUT /api/notifications/:id/read",
           "PUT /api/notifications/read-all",
           "DELETE /api/notifications/:id",
+          "GET /api/recommendations/user",
+          "GET /api/recommendations/user/category/:categoryId",
+          // SUPPORT ENDPOINTS
+          "GET /api/support/tickets",
+          "POST /api/support/tickets",
+          "GET /api/support/tickets/:id",
+          "PUT /api/support/tickets/:id",
+          "POST /api/support/tickets/:id/messages",
+          "GET /api/support/tickets/:id/messages",
+          "PUT /api/support/messages/:id/read",
+          "POST /api/support/tickets/:id/satisfaction",
+          "GET /api/support/search",
+          "GET /api/support/stats",
         ],
         admin: [
           "GET /api/admin/*",
@@ -264,12 +306,27 @@ app.get("/api/info", (req, res) => {
           "GET /api/notifications/admin/templates",
           "PUT /api/notifications/admin/templates/:id",
           "DELETE /api/notifications/admin/templates/:id",
+          // SUPPORT ADMIN ENDPOINTS
+          "PUT /api/support/tickets/:id/assign",
+          "PUT /api/support/tickets/:id/escalate",
+          "DELETE /api/support/tickets/:id",
+          "GET /api/support/agents",
+          "POST /api/support/agents",
+          "PUT /api/support/agents/:id",
+          "PUT /api/support/agents/:id/availability",
+          "GET /api/support/analytics/overview",
+          "GET /api/support/analytics/trends",
+          "GET /api/support/analytics/performance",
+          "GET /api/support/config",
+          "PUT /api/support/config",
+          "GET /api/support/export/tickets",
         ],
       },
       rateLimits: {
         global: "500 requests per 15 minutes",
         auth: "10 requests per minute",
         orders: "20 requests per minute",
+        support: "100 requests per 15 minutes", // NUOVO
         reviews: {
           create: "5 per hour (authenticated), 2 per day (guest)",
           vote: "50 per hour",
@@ -293,6 +350,11 @@ app.get("/api/info", (req, res) => {
           bulk: "10 bulk operations per hour",
           markRead: "50 mark as read per minute",
         },
+        recommendations: {
+          authenticated: "100 requests per 15 minutes",
+          public: "100 requests per 15 minutes",
+          bulk: "10 bulk operations per 5 minutes",
+        },
       },
       features: {
         websocket: "Real-time notifications enabled",
@@ -300,6 +362,20 @@ app.get("/api/info", (req, res) => {
         templates: "Customizable notification templates",
         scheduling: "Scheduled notifications support",
         preferences: "User notification preferences",
+        recommendations: "AI-powered product recommendations",
+        collaborative_filtering: "User-based recommendations",
+        content_filtering: "Category-based recommendations",
+        trending_analysis: "Real-time trending products",
+        bulk_operations: "Batch recommendation processing",
+        // SUPPORT FEATURES
+        support_system: "Enterprise support system enabled",
+        support_tickets: "Multi-level ticketing system",
+        support_chat: "Real-time support messaging",
+        support_escalation: "Multi-tier escalation system",
+        support_sla: "SLA tracking and monitoring",
+        support_analytics: "Support performance analytics",
+        support_satisfaction: "Customer satisfaction tracking",
+        support_multi_tenant: "Multi-business model support",
       },
     },
   });
@@ -324,6 +400,8 @@ app.use("*", (req, res) => {
       "GET /api/products",
       "GET /api/reviews",
       "GET /api/notifications",
+      "GET /api/recommendations/trending",
+      "GET /api/support/tickets", // NUOVO
     ],
   });
 });
@@ -357,6 +435,15 @@ app.use(
           process.env.NODE_ENV === "development"
             ? error.message
             : "Database operation failed",
+      });
+    }
+
+    // SUPPORT ERRORS
+    if (error instanceof Error && error.message.includes("SUPPORT_")) {
+      return res.status(400).json({
+        success: false,
+        error: "Support system error",
+        message: error.message,
       });
     }
 
@@ -423,8 +510,8 @@ httpServer.listen(PORT, () => {
 
 📝 API Endpoints:
   🌍 Public: /api/products, /api/reviews, /api/auth
-  🔒 Protected: /api/user, /api/orders, /api/notifications
-  👑 Admin: /api/admin/*, /api/notifications/admin/*
+  🔒 Protected: /api/user, /api/orders, /api/notifications, /api/support
+  👑 Admin: /api/admin/*, /api/notifications/admin/*, /api/support/admin/*
 
 🔔 Notification Features:
   📡 Real-time WebSocket notifications
@@ -432,6 +519,23 @@ httpServer.listen(PORT, () => {
   ⚙️  User preferences management
   📊 Admin statistics and monitoring
   ⏰ Scheduled notifications support
+
+🤖 AI Recommendation Features:
+  🎯 Personalized user recommendations
+  🔗 Similar product suggestions
+  🔥 Real-time trending analysis
+  🛒 Frequently bought together
+  📊 Hybrid recommendation algorithms
+  💪 Bulk processing capabilities
+
+🎫 Support System Features:
+  🎟️  Multi-level ticketing system
+  💬 Real-time support chat
+  📈 Escalation management
+  ⏱️  SLA tracking
+  📊 Support analytics
+  😊 Satisfaction surveys
+  🏢 Multi-business model support
 
 ⏰ Started: ${new Date().toLocaleString("it-IT")}
 🌍 Environment: ${process.env.NODE_ENV || "development"}

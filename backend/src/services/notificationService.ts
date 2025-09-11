@@ -80,7 +80,10 @@ class NotificationService {
 
       return notification as NotificationWithRelations;
     } catch (error) {
-      logger.error("Failed to create notification:", error);
+      logger.error(
+        "Failed to create notification:",
+        error instanceof Error ? error.message : "errore sconosciuto"
+      );
       throw new CustomError("Failed to create notification", 500);
     }
   }
@@ -113,7 +116,10 @@ class NotificationService {
 
       return notifications;
     } catch (error) {
-      logger.error("Failed to create bulk notifications:", error);
+      logger.error(
+        "Failed to create bulk notifications:",
+        error instanceof Error ? error.message : "errore sconosciuto"
+      );
       throw new CustomError("Failed to create bulk notifications", 500);
     }
   }
@@ -178,7 +184,10 @@ class NotificationService {
         },
       };
     } catch (error) {
-      logger.error("Failed to get user notifications:", error);
+      logger.error(
+        "Failed to get user notifications:",
+        error instanceof Error ? error.message : "errore sconosciuto"
+      );
       throw new CustomError("Failed to get user notifications", 500);
     }
   }
@@ -194,7 +203,10 @@ class NotificationService {
 
       return result.count > 0;
     } catch (error) {
-      logger.error("Failed to delete notification:", error);
+      logger.error(
+        "Failed to delete notification:",
+        error instanceof Error ? error.message : "errore sconosciuto"
+      );
       return false;
     }
   }
@@ -215,7 +227,10 @@ class NotificationService {
 
       return result.count > 0;
     } catch (error) {
-      logger.warn("Failed to mark notification as read:", error);
+      logger.warn(
+        "Failed to mark notification as read:",
+        error instanceof Error ? error.message : "errore sconosciuto"
+      );
       return false;
     }
   }
@@ -235,7 +250,10 @@ class NotificationService {
 
       return result.count;
     } catch (error) {
-      logger.warn("Failed to mark all notifications as read:", error);
+      logger.warn(
+        "Failed to mark all notifications as read:",
+        error instanceof Error ? error.message : "errore sconosciuto"
+      );
       return 0;
     }
   }
@@ -296,7 +314,10 @@ class NotificationService {
         create: createData,
       });
     } catch (error) {
-      logger.error("Failed to update user preferences:", error);
+      logger.error(
+        "Failed to update user preferences:",
+        error instanceof Error ? error.message : "errore sconosciuto"
+      );
       throw new CustomError("Failed to update user preferences", 500);
     }
   }
@@ -337,7 +358,10 @@ class NotificationService {
         }, {} as Record<string, number>),
       };
     } catch (error) {
-      logger.error("Failed to get notification stats:", error);
+      logger.error(
+        "Failed to get notification stats:",
+        error instanceof Error ? error.message : "errore sconosciuto"
+      );
       throw new CustomError("Failed to get notification stats", 500);
     }
   }
@@ -386,14 +410,17 @@ class NotificationService {
         } catch (error) {
           logger.error(
             `Failed to process notification ${notification.id}:`,
-            error
+            error instanceof Error ? error.message : "errore sconosciuto"
           );
         }
       }
 
       return processedCount;
     } catch (error) {
-      logger.error("Failed to process scheduled notifications:", error);
+      logger.error(
+        "Failed to process scheduled notifications:",
+        error instanceof Error ? error.message : "errore sconosciuto"
+      );
       throw new CustomError("Failed to process scheduled notifications", 500);
     }
   }
@@ -410,7 +437,10 @@ class NotificationService {
 
       return result.count;
     } catch (error) {
-      logger.error("Failed to cleanup expired notifications:", error);
+      logger.error(
+        "Failed to cleanup expired notifications:",
+        error instanceof Error ? error.message : "errore sconosciuto"
+      );
       throw new CustomError("Failed to cleanup expired notifications", 500);
     }
   }
@@ -428,7 +458,10 @@ class NotificationService {
         },
       });
     } catch (error) {
-      logger.error("Failed to create template:", error);
+      logger.error(
+        "Failed to create template:",
+        error instanceof Error ? error.message : "errore sconosciuto"
+      );
       throw new CustomError("Failed to create template", 500);
     }
   }
@@ -451,7 +484,10 @@ class NotificationService {
         orderBy: { type: "asc" },
       });
     } catch (error) {
-      logger.error("Failed to get templates:", error);
+      logger.error(
+        "Failed to get templates:",
+        error instanceof Error ? error.message : "errore sconosciuto"
+      );
       throw new CustomError("Failed to get templates", 500);
     }
   }
@@ -469,7 +505,10 @@ class NotificationService {
         },
       });
     } catch (error) {
-      logger.error("Failed to update template:", error);
+      logger.error(
+        "Failed to update template:",
+        error instanceof Error ? error.message : "errore sconosciuto"
+      );
       throw new CustomError("Failed to update template", 500);
     }
   }
@@ -480,7 +519,10 @@ class NotificationService {
         where: { id },
       });
     } catch (error) {
-      logger.error("Failed to delete template:", error);
+      logger.error(
+        "Failed to delete template:",
+        error instanceof Error ? error.message : "errore sconosciuto"
+      );
       throw new CustomError("Failed to delete template", 500);
     }
   }
@@ -547,7 +589,10 @@ class NotificationService {
         await this.sendEmailNotification(notification);
       }
     } catch (error) {
-      logger.error(`Failed to deliver notification ${notification.id}:`, error);
+      logger.error(
+        `Failed to deliver notification ${notification.id}:`,
+        error instanceof Error ? error.message : "errore sconosciuto"
+      );
     }
   }
   // ===========================================
@@ -635,7 +680,10 @@ class NotificationService {
         );
       }
     } catch (error) {
-      logger.warn("Failed to send order notification:", error);
+      logger.warn(
+        "Failed to send order notification:",
+        error instanceof Error ? error.message : "errore sconosciuto"
+      );
     }
   }
 
@@ -671,7 +719,10 @@ class NotificationService {
         variables
       );
     } catch (error) {
-      logger.warn("Failed to send order status notification:", error);
+      logger.warn(
+        "Failed to send order status notification:",
+        error instanceof Error ? error.message : "errore sconosciuto"
+      );
     }
   }
   // ===========================================
@@ -693,7 +744,10 @@ class NotificationService {
         variables
       );
     } catch (error) {
-      logger.warn("Failed to send payment success notification:", error);
+      logger.warn(
+        "Failed to send payment success notification:",
+        error instanceof Error ? error.message : "errore sconosciuto"
+      );
     }
   }
 
@@ -717,7 +771,10 @@ class NotificationService {
         variables
       );
     } catch (error) {
-      logger.warn("Failed to send payment failed notification:", error);
+      logger.warn(
+        "Failed to send payment failed notification:",
+        error instanceof Error ? error.message : "errore sconosciuto"
+      );
     }
   }
   // ===========================================
@@ -744,7 +801,10 @@ class NotificationService {
         variables
       );
     } catch (error) {
-      logger.warn("Failed to send account creation notification:", error);
+      logger.warn(
+        "Failed to send account creation notification:",
+        error instanceof Error ? error.message : "errore sconosciuto"
+      );
     }
   }
 
@@ -768,7 +828,10 @@ class NotificationService {
         variables
       );
     } catch (error) {
-      logger.warn("Failed to send password change notification:", error);
+      logger.warn(
+        "Failed to send password change notification:",
+        error instanceof Error ? error.message : "errore sconosciuto"
+      );
     }
   }
   // ===========================================
@@ -788,7 +851,10 @@ class NotificationService {
         variables
       );
     } catch (err) {
-      logger.warn("Failed to send system error notification:", err);
+      logger.warn(
+        "Failed to send system error notification:",
+        err instanceof Error ? error.message : "errore sconosciuto"
+      );
     }
   }
 
@@ -894,7 +960,10 @@ class NotificationService {
         text: notification.message,
       });
     } catch (error) {
-      logger.warn("Failed to send email notification:", error);
+      logger.warn(
+        "Failed to send email notification:",
+        error instanceof Error ? error.message : "errore sconosciuto"
+      );
     }
   }
 }
