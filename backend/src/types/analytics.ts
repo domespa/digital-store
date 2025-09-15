@@ -1,5 +1,3 @@
-// src/types/analytics.ts
-
 export interface DashboardMetrics {
   overview: OverviewMetrics;
   sales: SalesMetrics;

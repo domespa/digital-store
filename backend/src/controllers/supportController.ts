@@ -19,9 +19,13 @@ import {
   UpdateAgentRequest,
   SupportAnalyticsResponse,
   AnalyticsFilters,
+  AnalyticsOverview,
+  TrendData,
+  PerformanceMetrics,
 } from "../types/support";
 import { UserProfile } from "../types/auth";
 import { SupportService } from "../services/supportService";
+import { SupportAnalyticsService } from "../services/supportAnalyticsService";
 import { handleValidationErrors } from "../middleware/validation";
 import { authenticateToken } from "../middleware/auth";
 import { generalLimiter } from "../middleware/rateLimiting";
@@ -35,56 +39,6 @@ import multer from "multer";
 interface DateRange {
   from: Date;
   to: Date;
-}
-
-interface AnalyticsOverview {
-  totalTickets: number;
-  openTickets: number;
-  resolvedTickets: number;
-  avgResponseTime: number;
-  avgResolutionTime: number;
-  satisfactionRating: number;
-  slaCompliance: number;
-}
-
-interface TrendData {
-  date: string;
-  tickets: number;
-  resolved: number;
-  satisfaction: number;
-}
-
-interface PerformanceMetrics {
-  agentId: string;
-  agentName: string;
-  ticketsAssigned: number;
-  ticketsResolved: number;
-  avgResponseTime: number;
-  avgResolutionTime: number;
-  satisfactionRating: number;
-  slaCompliance: number;
-}
-
-interface SupportAnalyticsService {
-  getOverview(
-    businessModel: BusinessModel,
-    tenantId: string,
-    dateRange: DateRange
-  ): Promise<AnalyticsOverview>;
-
-  getTrends(
-    businessModel: BusinessModel,
-    tenantId: string,
-    period: "day" | "week" | "month",
-    dateRange: DateRange
-  ): Promise<TrendData[]>;
-
-  getPerformanceMetrics(
-    businessModel: BusinessModel,
-    tenantId: string,
-    agentId: string,
-    dateRange: DateRange
-  ): Promise<PerformanceMetrics>;
 }
 
 interface SupportAgentService {
@@ -764,7 +718,7 @@ export class SupportController {
         to: new Date(req.query.to as string),
       };
 
-      const metrics = await this.analyticsService.getPerformanceMetrics(
+      const metrics = await this.analyticsService.getAgentPerformance(
         businessModel,
         tenantId,
         agentId,
@@ -813,11 +767,15 @@ export class SupportController {
       const authReq = req as AuthenticatedRequest;
       const businessModel = req.body.businessModel as BusinessModel;
       const tenantId = req.body.tenantId as string;
-      const configData = req.body;
+
+      const configData = {
+        ...req.body,
+        tenantId,
+        businessModel,
+      };
 
       const config = await this.supportService.updateConfig(
         businessModel,
-        tenantId,
         configData
       );
 

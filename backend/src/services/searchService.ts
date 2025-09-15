@@ -672,13 +672,13 @@ export class SearchService {
         rating: Math.floor(Number(r.averageRating)),
         count: r._count.averageRating,
       })),
-      tags: [], // TODO: Implementa se necessario
+      tags: [],
       availability: {
-        inStock: 0, // TODO: Calcola
+        inStock: 0,
         outOfStock: 0,
       },
       productTypes: {
-        digital: 0, // TODO: Calcola
+        digital: 0,
         physical: 0,
         featured: 0,
       },

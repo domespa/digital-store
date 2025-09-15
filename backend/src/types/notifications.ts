@@ -17,7 +17,6 @@ import type {
 //                  ENUMS
 // ===========================================
 
-// Definisci gli enum come valori utilizzabili (non solo tipi)
 export const NotificationType = {
   // Order notifications
   ORDER_CREATED: "ORDER_CREATED",
@@ -51,6 +50,7 @@ export const NotificationType = {
   PASSWORD_CHANGED: "PASSWORD_CHANGED",
   EMAIL_VERIFIED: "EMAIL_VERIFIED",
   PROFILE_UPDATED: "PROFILE_UPDATED",
+  SYSTEM_NOTIFICATION: "SYSTEM_NOTIFICATION",
 
   // Admin notifications
   NEW_ORDER_ADMIN: "NEW_ORDER_ADMIN",
@@ -74,6 +74,7 @@ export const NotificationType = {
   SUPPORT_SLA_BREACH: "SUPPORT_SLA_BREACH",
   SUPPORT_SATISFACTION_SUBMITTED: "SUPPORT_SATISFACTION_SUBMITTED",
   SUPPORT_AGENT_CREATED: "SUPPORT_AGENT_CREATED",
+  SUPPORT_ALERT: "SUPPORT_ALERT",
 } as const;
 
 export const NotificationPriority = {

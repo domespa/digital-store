@@ -1231,7 +1231,7 @@ export class SupportService {
     permissions: {
       role: SupportRole;
       businessModel?: BusinessModel;
-      tenantId?: string; // ✅ Cambiato da string | null a string | undefined
+      tenantId?: string;
     },
     userId: string
   ): Record<string, any> {

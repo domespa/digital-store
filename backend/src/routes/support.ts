@@ -7,6 +7,8 @@ import NotificationService from "../services/notificationService";
 import EmailService from "../services/emailService";
 import WebSocketService from "../services/websocketService";
 import { FileUploadService } from "../services/uploadService";
+import { SupportAnalyticsService } from "../services/supportAnalyticsService";
+import { RealTimeAnalyticsService } from "../services/realtimeAnalyticsService";
 
 // ===========================================
 //            INTERFACES
@@ -180,20 +182,33 @@ export function setupSupportRoutes(
       existingServices
     );
 
-    // Servizi opzionali (da implementare in futuro)
+    // ANALITYCS SERVICE
     let analyticsService;
-    let agentService;
+    let realTimeAnalyticsService;
 
     if (options.enableAnalytics) {
-      // const { SupportAnalyticsService } = await import('../services/supportAnalyticsService');
-      // analyticsService = new SupportAnalyticsService(prisma);
-      console.warn("Analytics service not yet implemented");
+      analyticsService = new SupportAnalyticsService(prisma);
+      if (existingServices.websocketService) {
+        realTimeAnalyticsService = new RealTimeAnalyticsService(
+          prisma,
+          analyticsService,
+          existingServices.websocketService
+        );
+      }
+      console.log("✅ Analytics service enabled with real-time support");
     }
 
     if (options.enableAgentManagement) {
-      // const { SupportAgentService } = await import('../services/supportAgentService');
-      // agentService = new SupportAgentService(prisma);
+      // PROSSIMAMENTE
       console.warn("Agent management service not yet implemented");
+    }
+
+    if (analyticsService) {
+      const analyticsRoutes = createAnalyticsRoutes(
+        analyticsService,
+        realTimeAnalyticsService
+      );
+      router.use("/support/analytics", analyticsRoutes);
     }
 
     // Aggiungi health check
@@ -202,8 +217,8 @@ export function setupSupportRoutes(
     // Crea le routes principali del support
     const supportRoutes = createSupportRoutes(
       supportService,
-      analyticsService,
-      agentService
+      analyticsService
+      // agentService
     );
 
     // Applica rate limiting specifico alle routes critiche
@@ -217,7 +232,7 @@ export function setupSupportRoutes(
     console.log("Support System initialized successfully", {
       features: {
         analytics: !!analyticsService,
-        agentManagement: !!agentService,
+        // agentManagement: !!agentService,
         rateLimiting: true,
         healthCheck: true,
       },
@@ -237,6 +252,65 @@ export function setupSupportRoutes(
 // ===========================================
 //        ENHANCED SETUP FUNCTION
 // ===========================================
+
+const createHealthCheckWithAnalytics = (
+  prisma: PrismaClient,
+  analyticsService?: SupportAnalyticsService
+): Router => {
+  const router = Router();
+
+  router.get("/health", async (req, res) => {
+    try {
+      // Database test
+      await prisma.$queryRaw`SELECT 1`;
+
+      // Support config test
+      const configCount = await prisma.supportConfig.count();
+
+      // Analytics test (se abilitato)
+      let analyticsStatus = "disabled";
+      let analyticsHealth = {};
+
+      if (analyticsService) {
+        try {
+          // Test basic analytics functionality
+          await analyticsService.testAnalytics();
+          analyticsStatus = "healthy";
+
+          // Get analytics health metrics
+          analyticsHealth = {
+            aggregationStatus: "running",
+            lastHourlyUpdate: new Date(),
+            recordCount: await prisma.supportAnalytics.count(),
+          };
+        } catch (error) {
+          analyticsStatus = "degraded";
+          analyticsHealth = { error: "Analytics test failed" };
+        }
+      }
+
+      res.status(200).json({
+        status: "healthy",
+        timestamp: new Date().toISOString(),
+        services: {
+          database: "connected",
+          support: "configured",
+          analytics: analyticsStatus,
+          configCount,
+          ...analyticsHealth,
+        },
+      });
+    } catch (error) {
+      res.status(503).json({
+        status: "unhealthy",
+        timestamp: new Date().toISOString(),
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  });
+
+  return router;
+};
 
 export function setupSupportRoutesAdvanced(
   prisma: PrismaClient,
@@ -287,6 +361,138 @@ export function setupSupportRoutesAdvanced(
 
   return router;
 }
+// ===========================================
+//          DEDICATED ANALYTICS ROUTES
+// ===========================================
+
+const createAnalyticsRoutes = (
+  analyticsService: SupportAnalyticsService,
+  realTimeService?: RealTimeAnalyticsService
+): Router => {
+  const router = Router();
+
+  // Dashboard endpoint
+  router.get("/dashboard", async (req, res) => {
+    try {
+      const { businessModel, tenantId, from, to } = req.query;
+
+      const dateRange = {
+        from: new Date(from as string),
+        to: new Date(to as string),
+      };
+
+      if (realTimeService) {
+        const dashboard = await realTimeService.getDashboard(
+          businessModel as any,
+          tenantId as string,
+          dateRange
+        );
+        res.json({ success: true, data: dashboard });
+      } else {
+        const overview = await analyticsService.getOverview(
+          businessModel as any,
+          tenantId as string,
+          dateRange
+        );
+        res.json({ success: true, data: overview });
+      }
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        error: error instanceof Error ? error.message : "Analytics error",
+      });
+    }
+  });
+
+  // Real-time metrics endpoint
+  if (realTimeService) {
+    router.get("/realtime", async (req, res) => {
+      try {
+        const { businessModel, tenantId } = req.query;
+
+        const metrics = await realTimeService.getCurrentMetrics(
+          businessModel as any,
+          tenantId as string
+        );
+
+        res.json({ success: true, data: metrics });
+      } catch (error) {
+        res.status(500).json({
+          success: false,
+          error: error instanceof Error ? error.message : "Real-time error",
+        });
+      }
+    });
+
+    // WebSocket subscription endpoint
+    router.post("/subscribe", async (req, res) => {
+      try {
+        const { userId, businessModel, tenantId } = req.body;
+
+        await realTimeService.subscribeToAnalytics(
+          userId,
+          businessModel,
+          tenantId
+        );
+
+        res.json({ success: true, message: "Subscribed to analytics updates" });
+      } catch (error) {
+        res.status(500).json({
+          success: false,
+          error: error instanceof Error ? error.message : "Subscription error",
+        });
+      }
+    });
+  }
+
+  // Custom reports endpoint
+  router.post("/reports", async (req, res) => {
+    try {
+      const { config, businessModel, tenantId } = req.body;
+
+      const report = await analyticsService.generateCustomReport(
+        config,
+        businessModel,
+        tenantId
+      );
+
+      res.json({ success: true, data: report });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        error:
+          error instanceof Error ? error.message : "Report generation error",
+      });
+    }
+  });
+
+  // Export endpoint
+  router.get("/export", async (req, res) => {
+    try {
+      const { format, filename, data } = req.query;
+
+      const exportResult = await analyticsService.exportAnalytics(
+        format as any,
+        JSON.parse(data as string),
+        filename as string
+      );
+
+      res.setHeader("Content-Type", exportResult.mimeType);
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${exportResult.filename}"`
+      );
+      res.send(exportResult.data);
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        error: error instanceof Error ? error.message : "Export error",
+      });
+    }
+  });
+
+  return router;
+};
 
 // ===========================================
 //              EXPORTS

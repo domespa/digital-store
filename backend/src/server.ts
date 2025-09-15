@@ -55,6 +55,15 @@ const PORT = process.env.PORT || 3001;
 // CREATE HTTP SERVER PER WEBSOCKET
 const httpServer = createServer(app);
 
+// SERVIZI CONDIVISI
+const emailService = new EmailService();
+const uploadService = new FileUploadService();
+const websocketService = new WebSocketService(httpServer);
+const notificationService = new NotificationService(
+  websocketService,
+  emailService
+);
+
 //=====================================================
 // ==================== MIDDLEWARE ====================
 //=====================================================
@@ -108,7 +117,9 @@ app.get("/api/health", (req, res) => {
       notifications: "operational",
       websocket: "enabled",
       recommendations: "operational",
-      support: "operational", // NUOVO
+      support: "operational",
+      supportAnalytics: "enabled",
+      realTimeSupport: "enabled",
     },
   });
 });
@@ -163,7 +174,24 @@ app.use("/api/inventory", inventoryRoutes);
 //=====================================================
 
 // SUPPORT ROUTES (RICHIEDE AUTH)
-const supportRoutes = setupSupportRoutes(prisma);
+const supportRoutes = setupSupportRoutes(
+  prisma,
+  {
+    websocketService: websocketService,
+    emailService: emailService,
+    notificationService: notificationService,
+    uploadService: uploadService,
+  },
+  {
+    enableAnalytics: true,
+    enableAgentManagement: false,
+    rateLimitConfig: {
+      ticketCreation: { windowMs: 3600000, max: 5 }, // 5 tickets/hour
+      messaging: { windowMs: 300000, max: 20 }, // 20 messages/5min
+    },
+  }
+);
+
 app.use("/api/support", supportRoutes);
 
 //=====================================================
@@ -189,13 +217,15 @@ app.get("/api/test-db", async (req, res) => {
       reviewCount,
       notificationCount,
       supportTicketCount,
+      supportAnalyticsCount,
     ] = await Promise.all([
       prisma.user.count(),
       prisma.product.count(),
       prisma.order.count(),
       prisma.review.count(),
       prisma.notification.count().catch(() => 0),
-      prisma.supportTicket.count().catch(() => 0), // NUOVO
+      prisma.supportTicket.count().catch(() => 0),
+      prisma.supportAnalytics.count().catch(() => 0),
     ]);
 
     res.json({
@@ -206,7 +236,7 @@ app.get("/api/test-db", async (req, res) => {
         orders: orderCount,
         reviews: reviewCount,
         notifications: notificationCount,
-        supportTickets: supportTicketCount, // NUOVO
+        supportTickets: supportTicketCount,
       },
       timestamp: new Date().toISOString(),
     });
@@ -278,6 +308,7 @@ app.get("/api/info", (req, res) => {
           "GET /api/recommendations/user",
           "GET /api/recommendations/user/category/:categoryId",
           // SUPPORT ENDPOINTS
+          "GET /api/support/health",
           "GET /api/support/tickets",
           "POST /api/support/tickets",
           "GET /api/support/tickets/:id",
@@ -310,23 +341,33 @@ app.get("/api/info", (req, res) => {
           "PUT /api/support/tickets/:id/assign",
           "PUT /api/support/tickets/:id/escalate",
           "DELETE /api/support/tickets/:id",
-          "GET /api/support/agents",
-          "POST /api/support/agents",
-          "PUT /api/support/agents/:id",
-          "PUT /api/support/agents/:id/availability",
-          "GET /api/support/analytics/overview",
-          "GET /api/support/analytics/trends",
-          "GET /api/support/analytics/performance",
+          // "GET /api/support/agents",
+          // "POST /api/support/agents",
+          // "PUT /api/support/agents/:id",
+          // "PUT /api/support/agents/:id/availability",
           "GET /api/support/config",
           "PUT /api/support/config",
           "GET /api/support/export/tickets",
+          // ANALYTICS ENDPOINTS
+          "GET /api/support/analytics/dashboard",
+          "GET /api/support/analytics/realtime",
+          "POST /api/support/analytics/subscribe",
+          "POST /api/support/analytics/reports",
+          "GET /api/support/analytics/export",
+          "GET /api/support/analytics/overview",
+          "GET /api/support/analytics/trends",
+          "GET /api/support/analytics/performance",
         ],
       },
       rateLimits: {
         global: "500 requests per 15 minutes",
         auth: "10 requests per minute",
         orders: "20 requests per minute",
-        support: "100 requests per 15 minutes", // NUOVO
+        support: {
+          tickets: "5 tickets per hour",
+          messages: "20 messages per 5 minutes",
+          analytics: "100 requests per 15 minutes",
+        },
         reviews: {
           create: "5 per hour (authenticated), 2 per day (guest)",
           vote: "50 per hour",
@@ -373,9 +414,11 @@ app.get("/api/info", (req, res) => {
         support_chat: "Real-time support messaging",
         support_escalation: "Multi-tier escalation system",
         support_sla: "SLA tracking and monitoring",
-        support_analytics: "Support performance analytics",
+        support_analytics: "Real-time support analytics dashboard",
         support_satisfaction: "Customer satisfaction tracking",
         support_multi_tenant: "Multi-business model support",
+        support_real_time: "WebSocket real-time updates",
+        support_reports: "Custom analytics reports and export",
       },
     },
   });
@@ -401,7 +444,7 @@ app.use("*", (req, res) => {
       "GET /api/reviews",
       "GET /api/notifications",
       "GET /api/recommendations/trending",
-      "GET /api/support/tickets", // NUOVO
+      "GET /api/support/tickets",
     ],
   });
 });
@@ -530,15 +573,19 @@ httpServer.listen(PORT, () => {
 
 🎫 Support System Features:
   🎟️  Multi-level ticketing system
-  💬 Real-time support chat
+  💬 Real-time support chat with WebSocket
   📈 Escalation management
-  ⏱️  SLA tracking
-  📊 Support analytics
+  ⏱️  SLA tracking and monitoring
+  📊 Real-time analytics dashboard  
+  📈 Custom reports and export     
   😊 Satisfaction surveys
   🏢 Multi-business model support
+  🔄 Live metrics streaming       
 
 ⏰ Started: ${new Date().toLocaleString("it-IT")}
 🌍 Environment: ${process.env.NODE_ENV || "development"}
+
+
   `);
 });
 
@@ -547,10 +594,16 @@ process.on("SIGINT", async () => {
   console.log("\n🛑 Graceful shutdown initiated...");
 
   try {
+    // 🚀 CLEANUP WEBSOCKET SERVICE
+    if (websocketService) {
+      await websocketService.cleanup();
+      console.log("✅ WebSocket service cleaned up");
+    }
+
     await prisma.$disconnect();
     console.log("✅ Database disconnected");
   } catch (error) {
-    console.error("❌ Error disconnecting database:", error);
+    console.error("❌ Error during shutdown:", error);
   }
 
   console.log("👋 Server stopped");
