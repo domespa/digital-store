@@ -160,13 +160,14 @@ export interface ModerationLogEntry {
 
 // REQUEST ESTESO PER RECENSIONI (SUPPORTA SIA AUTH CHE GUEST)
 export interface ReviewRequest extends Request {
-  user?: UserProfile; // OPZIONALE - USA IL TUO USERPROFILE ESISTENTE
+  user?: UserProfile & { emailVerified: boolean };
   body: CreateReviewRequest | UpdateReviewRequest | AdminUpdateReviewRequest;
 }
 
 // INTERFACCIA SEPARATA PER ADMIN USER
 export interface AdminUserProfile extends UserProfile {
-  role: typeof UserRole.ADMIN; // CORREZIONE: USA typeof PER IL TYPE ENUM
+  role: typeof UserRole.ADMIN;
+  emailVerified: boolean; // CORREZIONE: USA typeof PER IL TYPE ENUM
 }
 
 // REQUEST PER ADMIN (SEMPRE AUTENTICATO) - CORRETTO

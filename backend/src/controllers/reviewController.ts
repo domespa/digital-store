@@ -1,4 +1,3 @@
-// SRC/CONTROLLERS/REVIEWCONTROLLER.TS - VERSIONE CORRETTA SENZA ANY
 import { Request, Response } from "express";
 import { ReviewService } from "../services/reviewService";
 import {
@@ -20,13 +19,13 @@ import { catchAsync } from "../utils/catchAsync";
 
 // INTERFACCIA ESTESA PER REQUEST AUTENTICATA CON QUERY
 interface AuthenticatedRequestWithQuery extends Request {
-  user?: UserProfile;
+  user?: UserProfile & { emailVerified: boolean };
   query: Request["query"];
 }
 
 // INTERFACCIA PER REQUEST CHE SUPPORTA SIA AUTH CHE GUEST
 interface FlexibleRequest extends Request {
-  user?: UserProfile;
+  user?: UserProfile & { emailVerified: boolean };
 }
 
 // TIPI QUERY PARAMETERS

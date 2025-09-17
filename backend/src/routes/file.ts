@@ -1,4 +1,3 @@
-// src/routes/fileRoutes.ts
 import express from "express";
 import { FileController } from "../controllers/fileController";
 import { FileUploadService } from "../services/uploadService";

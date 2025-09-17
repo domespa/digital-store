@@ -35,7 +35,7 @@ export interface UserProfile {
   lastName: string;
   role: UserRole;
   createdAt: Date;
-  emailVerified: boolean; // Aggiunto per compatibilità con il middleware
+  emailVerified?: boolean;
 }
 
 // ===========================================
@@ -57,7 +57,7 @@ export interface JwtPayload {
 
 // USER AUTENTICATO
 export interface AuthenticatedRequest extends Express.Request {
-  user?: UserProfile;
+  user?: UserProfile & { emailVerified: boolean };
 }
 
 // ===========================================

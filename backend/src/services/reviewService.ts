@@ -923,6 +923,7 @@ export class ReviewService {
               lastName: review.user.lastName,
               role: review.user.role,
               createdAt: review.user.createdAt,
+              emailVerified: false,
             }
           : undefined,
     };

@@ -1,4 +1,3 @@
-// src/services/websocketService.ts - Versione finale con solo campi esistenti
 import { Server, Socket } from "socket.io";
 import { Server as HTTPServer } from "http";
 import jwt, { JwtPayload } from "jsonwebtoken";

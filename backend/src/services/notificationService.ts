@@ -1,12 +1,15 @@
-import { PrismaClient } from "../generated/prisma";
+import {
+  PrismaClient,
+  NotificationType as PrismaNotificationType,
+  Prisma,
+} from "../generated/prisma";
 import { logger } from "../utils/logger";
 import { CustomError } from "../utils/customError";
 import WebSocketService from "./websocketService";
 import EmailService from "./emailService";
 import {
-  NotificationType,
-  NotificationPriority,
-  NotificationCategory,
+  NotificationPriority as PrismaNotificationPriority,
+  NotificationCategory as PrismaNotificationCategory,
   DeliveryMethod,
   User,
   Order,
@@ -41,7 +44,7 @@ class NotificationService {
   // ===========================================
 
   async createNotification(
-    data: NotificationData
+    data: Omit<NotificationData, "type"> & { type: PrismaNotificationType }
   ): Promise<NotificationWithRelations> {
     try {
       const notification = await prisma.notification.create({
@@ -50,7 +53,7 @@ class NotificationService {
           type: data.type,
           title: data.title,
           message: data.message,
-          priority: data.priority || NotificationPriority.NORMAL,
+          priority: data.priority || PrismaNotificationPriority.NORMAL,
           category: data.category,
           data: (data.data || {}) as any,
           actionUrl: data.actionUrl,
@@ -97,10 +100,19 @@ class NotificationService {
           prisma.notification.create({
             data: {
               userId,
-              ...data.notification,
+              type: data.notification.type as PrismaNotificationType,
+              title: data.notification.title,
+              message: data.notification.message,
+              category: data.notification.category,
               priority:
-                data.notification.priority || NotificationPriority.NORMAL,
-              data: (data.notification.data || {}) as any,
+                data.notification.priority || PrismaNotificationPriority.NORMAL,
+              data: (data.notification.data as Prisma.JsonValue) || {}, // cast a JsonValue
+              actionUrl: data.notification.actionUrl,
+              expiresAt: data.notification.expiresAt,
+              scheduledFor: data.notification.scheduledFor,
+              orderId: data.notification.orderId,
+              productId: data.notification.productId,
+              reviewId: data.notification.reviewId,
               source: data.notification.source || "system",
             },
           })
@@ -453,8 +465,16 @@ class NotificationService {
     try {
       return await prisma.notificationTemplate.create({
         data: {
-          ...data,
-          variables: data.variables as any,
+          type: data.type as PrismaNotificationType, // <- cast qui
+          category: data.category,
+          websocketTitle: data.websocketTitle,
+          websocketMessage: data.websocketMessage,
+          emailSubject: data.emailSubject,
+          emailTemplate: data.emailTemplate,
+          priority: data.priority as PrismaNotificationPriority,
+          autoExpire: data.autoExpire,
+          expirationHours: data.expirationHours,
+          variables: data.variables as Prisma.InputJsonValue,
         },
       });
     } catch (error) {
@@ -467,7 +487,7 @@ class NotificationService {
   }
 
   async getTemplate(
-    type: NotificationType
+    type: PrismaNotificationType
   ): Promise<NotificationTemplate | null> {
     try {
       return await prisma.notificationTemplate.findUnique({
@@ -497,12 +517,15 @@ class NotificationService {
     updates: Partial<CreateTemplateData>
   ): Promise<NotificationTemplate> {
     try {
+      const dataToUpdate: any = { ...updates };
+
+      if (updates.variables !== undefined) {
+        dataToUpdate.variables = updates.variables as Prisma.JsonValue;
+      }
+
       return await prisma.notificationTemplate.update({
         where: { id },
-        data: {
-          ...updates,
-          variables: updates.variables as any,
-        },
+        data: dataToUpdate,
       });
     } catch (error) {
       logger.error(
@@ -581,8 +604,8 @@ class NotificationService {
       }
 
       if (
-        (notification.priority === NotificationPriority.HIGH ||
-          notification.priority === NotificationPriority.URGENT ||
+        (notification.priority === PrismaNotificationPriority.HIGH ||
+          notification.priority === PrismaNotificationPriority.URGENT ||
           preferences.enableEmail) &&
         this.shouldSendEmailForType(notification.type, preferences)
       ) {
@@ -599,22 +622,24 @@ class NotificationService {
   //             TEMPLATE-BASED NOTIFICATIONS
   // ===========================================
   async createNotificationFromTemplate(
-    type: NotificationType,
+    type: PrismaNotificationType,
     userId: string | null,
     variables: Record<string, unknown> = {}
   ): Promise<NotificationWithRelations> {
     try {
       const template = await this.getTemplate(type);
+
       if (!template) {
         // Fallback se il template non esiste
         return await this.createNotification({
           userId: userId || undefined,
-          type,
+          type, // PrismaNotificationType
           title: `Notification: ${type}`,
           message: `A ${type} event occurred`,
-          category: NotificationCategory.SYSTEM,
+          category: "SYSTEM" as PrismaNotificationCategory,
           data: variables,
           source: "fallback-system",
+          priority: "NORMAL" as PrismaNotificationPriority,
         });
       }
 
@@ -624,13 +649,15 @@ class NotificationService {
         variables
       );
 
-      const notificationData: NotificationData = {
+      const notificationData: Omit<NotificationData, "type"> & {
+        type: PrismaNotificationType;
+      } = {
         userId: userId || undefined,
-        type,
+        type, // PrismaNotificationType
         title,
         message,
-        priority: template.priority,
-        category: template.category,
+        priority: template.priority as PrismaNotificationPriority,
+        category: template.category as PrismaNotificationCategory,
         data: variables,
         source: "template-system",
       };
@@ -643,17 +670,20 @@ class NotificationService {
 
       return await this.createNotification(notificationData);
     } catch (error) {
+      // fallback generico
       return await this.createNotification({
         userId: userId || undefined,
-        type,
+        type, // PrismaNotificationType
         title: `Notification: ${type}`,
         message: `A ${type} event occurred`,
-        category: NotificationCategory.SYSTEM,
+        category: "SYSTEM" as PrismaNotificationCategory,
         data: variables,
         source: "fallback-system",
+        priority: "NORMAL" as PrismaNotificationPriority,
       });
     }
   }
+
   // ===========================================
   //           ORDER NOTIFICATIONS
   // ===========================================
@@ -667,14 +697,14 @@ class NotificationService {
 
     try {
       await this.createNotificationFromTemplate(
-        NotificationType.ORDER_CREATED,
+        PrismaNotificationType.ORDER_CREATED,
         order.userId,
         variables
       );
 
       if (Number(order.total) >= 1000) {
         await this.createNotificationFromTemplate(
-          NotificationType.HIGH_VALUE_ORDER,
+          PrismaNotificationType.HIGH_VALUE_ORDER,
           null,
           { ...variables, isHighValue: true }
         );
@@ -692,12 +722,12 @@ class NotificationService {
     newStatus: string,
     previousStatus: string
   ): Promise<void> {
-    const statusTypeMap: Record<string, NotificationType> = {
-      CONFIRMED: NotificationType.ORDER_CONFIRMED,
-      PROCESSING: NotificationType.ORDER_PROCESSING,
-      SHIPPED: NotificationType.ORDER_SHIPPED,
-      DELIVERED: NotificationType.ORDER_DELIVERED,
-      CANCELLED: NotificationType.ORDER_CANCELLED,
+    const statusTypeMap: Record<string, PrismaNotificationType> = {
+      CONFIRMED: PrismaNotificationType.ORDER_CONFIRMED,
+      PROCESSING: PrismaNotificationType.ORDER_PROCESSING,
+      SHIPPED: PrismaNotificationType.ORDER_SHIPPED,
+      DELIVERED: PrismaNotificationType.ORDER_DELIVERED,
+      CANCELLED: PrismaNotificationType.ORDER_CANCELLED,
     };
 
     const notificationType = statusTypeMap[newStatus];
@@ -739,7 +769,7 @@ class NotificationService {
 
     try {
       await this.createNotificationFromTemplate(
-        NotificationType.PAYMENT_SUCCESS,
+        PrismaNotificationType.PAYMENT_SUCCESS,
         order.userId,
         variables
       );
@@ -766,7 +796,7 @@ class NotificationService {
 
     try {
       await this.createNotificationFromTemplate(
-        NotificationType.PAYMENT_FAILED,
+        PrismaNotificationType.PAYMENT_FAILED,
         order.userId,
         variables
       );
@@ -796,7 +826,7 @@ class NotificationService {
       };
 
       await this.createNotificationFromTemplate(
-        NotificationType.ACCOUNT_CREATED,
+        PrismaNotificationType.ACCOUNT_CREATED,
         userId,
         variables
       );
@@ -823,7 +853,7 @@ class NotificationService {
       };
 
       await this.createNotificationFromTemplate(
-        NotificationType.PASSWORD_CHANGED,
+        PrismaNotificationType.PASSWORD_CHANGED,
         userId,
         variables
       );
@@ -846,7 +876,7 @@ class NotificationService {
       };
 
       await this.createNotificationFromTemplate(
-        NotificationType.SYSTEM_ERROR,
+        PrismaNotificationType.SYSTEM_ERROR,
         null,
         variables
       );
@@ -910,19 +940,26 @@ class NotificationService {
   }
 
   private shouldSendEmailForType(
-    type: NotificationType,
+    type: PrismaNotificationType,
     preferences: any
   ): boolean {
     const emailEnabledTypes: Record<string, boolean> = {
-      [NotificationType.ORDER_CREATED]: preferences.orderUpdates ?? true,
-      [NotificationType.ORDER_CONFIRMED]: preferences.orderUpdates ?? true,
-      [NotificationType.ORDER_SHIPPED]: preferences.orderUpdates ?? true,
-      [NotificationType.ORDER_DELIVERED]: preferences.orderUpdates ?? true,
-      [NotificationType.PAYMENT_SUCCESS]: preferences.paymentAlerts ?? true,
-      [NotificationType.PAYMENT_FAILED]: preferences.paymentAlerts ?? true,
-      [NotificationType.PASSWORD_CHANGED]: preferences.systemAlerts ?? true,
-      [NotificationType.ACCOUNT_CREATED]: preferences.systemAlerts ?? true,
-      [NotificationType.PROMOTION_STARTED]: preferences.promotions ?? false,
+      [PrismaNotificationType.ORDER_CREATED]: preferences.orderUpdates ?? true,
+      [PrismaNotificationType.ORDER_CONFIRMED]:
+        preferences.orderUpdates ?? true,
+      [PrismaNotificationType.ORDER_SHIPPED]: preferences.orderUpdates ?? true,
+      [PrismaNotificationType.ORDER_DELIVERED]:
+        preferences.orderUpdates ?? true,
+      [PrismaNotificationType.PAYMENT_SUCCESS]:
+        preferences.paymentAlerts ?? true,
+      [PrismaNotificationType.PAYMENT_FAILED]:
+        preferences.paymentAlerts ?? true,
+      [PrismaNotificationType.PASSWORD_CHANGED]:
+        preferences.systemAlerts ?? true,
+      [PrismaNotificationType.ACCOUNT_CREATED]:
+        preferences.systemAlerts ?? true,
+      [PrismaNotificationType.PROMOTION_STARTED]:
+        preferences.promotions ?? false,
     };
 
     return emailEnabledTypes[type] ?? false;

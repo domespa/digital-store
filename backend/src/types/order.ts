@@ -1,4 +1,3 @@
-// src/types/order.ts
 import { Prisma } from "../generated/prisma";
 
 export interface CartItem {

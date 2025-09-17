@@ -1,4 +1,3 @@
-// src/controllers/orderController.ts
 import { Request, Response } from "express";
 import { PrismaClient, Prisma } from "../generated/prisma";
 import {
@@ -19,14 +18,12 @@ import {
 import { stripe } from "../services/stripe";
 import { paypalService } from "../services/paypal";
 import { currencyService } from "../services/currency";
-import {
-  sendOrderConfirmation,
-  sendOrderStatusUpdate,
-} from "../services/emailService";
+import EmailService from "../services/emailService";
 import { catchAsync } from "../utils/catchAsync";
 import { CustomError } from "../utils/customError";
 
 const prisma = new PrismaClient();
+const emailService = new EmailService();
 
 // ============== UTILITY FUNCTIONS ==============
 
@@ -494,7 +491,7 @@ export const createOrder = catchAsync(async (req: Request, res: Response) => {
 
   // INVIA EMAIL CONFERMA
   try {
-    await sendOrderConfirmation(orderResponse);
+    await emailService.sendOrderConfirmation(orderResponse);
     console.log(`Order confirmation email sent for order: ${order.id}`);
   } catch (emailError) {
     console.error("Failed to send order confirmation email:", emailError);
@@ -674,7 +671,7 @@ export const updateOrderStatus = catchAsync(
 
     if (updateData.status && updateData.status !== previousStatus) {
       try {
-        await sendOrderStatusUpdate(orderResponse, previousStatus);
+        await emailService.sendOrderStatusUpdate(orderResponse, previousStatus);
         console.log(
           `Order status update email sent for order: ${updatedOrder.id}`
         );

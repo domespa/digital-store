@@ -6,7 +6,7 @@ import { catchAsync } from "../utils/catchAsync";
 
 // INTERFACCIA PER REQUEST CON AUTH OPZIONALE
 interface OptionalAuthRequest extends Request {
-  user?: UserProfile;
+  user: UserProfile & { emailVerified: boolean };
 }
 
 // TIPI QUERY PARAMETERS

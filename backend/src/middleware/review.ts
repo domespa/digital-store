@@ -6,7 +6,7 @@ import { UserProfile } from "../types/auth";
 
 // INTERFACCIA PER REQUEST CON USER OPZIONALE
 interface RequestWithUser extends Request {
-  user?: UserProfile;
+  user?: UserProfile & { emailVerified: boolean };
 }
 
 class ReviewValidation {

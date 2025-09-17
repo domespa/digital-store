@@ -137,7 +137,7 @@ export interface NotificationPayload {
 
 export interface NotificationData {
   userId?: string;
-  type: NotificationType;
+  type: PrismaNotificationType;
   title: string;
   message: string;
   priority?: NotificationPriority;

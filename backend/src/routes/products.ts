@@ -15,7 +15,7 @@ router.use((req, res, next) => {
 
   if (!currency) {
     const acceptLanguage = req.headers["accept-language"];
-    const country = req.headers["cf-ipcountry"] as string; // Se usi Cloudflare
+    const country = req.headers["cf-ipcountry"] as string;
 
     if (country) {
       currency = CurrencyService.detectCurrencyFromCountry(country);

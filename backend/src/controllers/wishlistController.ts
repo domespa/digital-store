@@ -1,5 +1,3 @@
-// src/controllers/wishlistController.ts
-
 import { Request, Response } from "express";
 import { WishlistService } from "../services/wishlistService";
 import { WishlistError, WishlistFilters } from "../types/wishlist";
@@ -8,7 +6,7 @@ import { catchAsync } from "../utils/catchAsync";
 
 // INTERFACCIA PER REQUEST AUTENTICATA
 interface AuthenticatedRequest extends Request {
-  user: UserProfile;
+  user: UserProfile & { emailVerified: boolean };
 }
 
 // TIPI QUERY PARAMETERS

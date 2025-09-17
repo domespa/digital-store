@@ -1,5 +1,3 @@
-// src/controllers/analyticsController.ts
-
 import { Request, Response } from "express";
 import { AnalyticsService } from "../services/analyticsService";
 import { AnalyticsFilters, AnalyticsError } from "../types/analytics";
@@ -8,7 +6,7 @@ import { catchAsync } from "../utils/catchAsync";
 
 // INTERFACCIA PER REQUEST ADMIN
 interface AdminRequest extends Request {
-  user: UserProfile & { role: "ADMIN" };
+  user: UserProfile & { role: "ADMIN"; emailVerified: boolean };
 }
 
 // QUERY PARAMETERS
