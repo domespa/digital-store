@@ -8,6 +8,8 @@ import HeroSect from "./sections/HeroSect";
 import ProblemsSect from "./sections/ProblemsSect";
 import FeaturesSect from "./sections/FeaturesSect";
 import TestimonialSect from "./sections/TestimonialSect";
+import FaqSect from "./sections/FaqSect";
+import PricingSect from "./sections/PricingSect";
 
 const LandingPageContent = () => {
   return (
@@ -16,6 +18,8 @@ const LandingPageContent = () => {
       <ProblemsSect />
       <FeaturesSect />
       <TestimonialSect />
+      <FaqSect />
+      <PricingSect />
     </div>
   );
 };

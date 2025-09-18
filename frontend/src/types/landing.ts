@@ -55,6 +55,38 @@ export interface Bonus {
   icon: string;
 }
 
+// PRICING
+export interface PricingHighlight {
+  icon: string;
+  title: string;
+  description: string;
+}
+
+export interface PricingBonus {
+  title: string;
+  description: string;
+  value: number;
+}
+
+export interface PricingUrgency {
+  enabled: boolean;
+  message: string;
+  countdown?: boolean;
+}
+
+export interface PricingConfig {
+  title: string;
+  subtitle: string;
+  mainPrice: number;
+  originalPrice: number;
+  currency: string;
+  included: string[];
+  highlights: PricingHighlight[];
+  guarantees: string[];
+  urgency?: PricingUrgency;
+  bonuses?: PricingBonus[];
+}
+
 export interface FeaturesConfig {
   title: string;
   subtitle: string;
@@ -101,6 +133,7 @@ export interface LandingConfig {
   features: FeaturesConfig;
   testimonials: TestimonialsConfig;
   faq: FAQConfig;
+  pricing: PricingConfig;
   settings: {
     theme: "default" | "dark" | "minimal";
     colors: { primary: string; secondary: string; accent: string };

@@ -137,7 +137,7 @@ export default function TestimonialSect() {
 
         {/* ============== DESKTOP GRID LAYOUT ============== */}
         <div className="hidden md:grid md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8 mb-12 sm:mb-16">
-          {config.testimonials.testimonials.map((testimonial, index) => (
+          {config.testimonials.testimonials.map((testimonial) => (
             <div
               key={testimonial.id}
               className="bg-white rounded-xl sm:rounded-2xl shadow-xl p-6 sm:p-8 border-l-4 border-green-400 transform transition-all duration-300 hover:scale-105 hover:shadow-2xl group"

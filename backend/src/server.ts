@@ -42,6 +42,9 @@ import EmailService from "./services/emailService";
 import WebSocketService from "./services/websocketService";
 import { FileUploadService } from "./services/uploadService";
 
+// IMPORT CURRENCY
+import currencyRoutes from "./routes/currencyRoutes";
+
 // CARICHIAMO LE VARIABILI DI AMBIENTE
 dotenv.config();
 
@@ -127,6 +130,9 @@ app.get("/api/health", (req, res) => {
 //=====================================================
 // ================ ROUTE PUBBLICHE ===================
 //=====================================================
+
+// CURRENCY
+app.use("/api/currency", currencyRoutes);
 
 // AUTH (CON RATE LIMITING SPECIFICO)
 app.use("/api/auth", authLimiter, authRoutes);

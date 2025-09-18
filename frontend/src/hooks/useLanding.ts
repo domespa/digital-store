@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { products } from "../lib/api";
 import type {
   LandingConfig,
   LandingUser,

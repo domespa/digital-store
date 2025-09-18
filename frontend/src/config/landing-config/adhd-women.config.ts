@@ -272,6 +272,61 @@ export const adhdWomenConfig: LandingConfig = {
     ],
   },
 
+  // PRICING
+  pricing: {
+    title: "Transform Your ADHD Life Today",
+    subtitle:
+      "Everything you need to go from chaos to control - complete system, not just a book",
+
+    mainPrice: 47,
+    originalPrice: 197,
+    currency: "USD",
+
+    included: [
+      "Complete 200+ Page ADHD Guide",
+      "10 Comprehensive Chapters",
+      "Interactive Worksheets & Checklists",
+      "Morning Routine Templates",
+      "Symptom Tracking Templates",
+      "Professional Resource Directory",
+      "Crisis Support Resources",
+      "Lifetime Access & Updates",
+    ],
+
+    highlights: [
+      {
+        icon: "📚",
+        title: "10 In-Depth Chapters",
+        description:
+          "From late diagnosis to motherhood, relationships to workplace success",
+      },
+      {
+        icon: "🧠",
+        title: "Female-Focused Content",
+        description:
+          "Written specifically for how ADHD manifests in women's brains and bodies",
+      },
+      {
+        icon: "⚡",
+        title: "Practical Strategies",
+        description:
+          "Real techniques from women who've transformed their ADHD lives",
+      },
+      {
+        icon: "📋",
+        title: "Ready-to-Use Templates",
+        description:
+          "Morning routines, tracking sheets, checklists - everything ready to print",
+      },
+    ],
+
+    guarantees: [
+      "Instant digital download",
+      "Works on all devices",
+      "Based on real research & testimonials",
+    ],
+  },
+
   // SETTINGS
   settings: {
     theme: "default",
