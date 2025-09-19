@@ -1,3 +1,4 @@
+import { useLandingContext } from "../../../context/LandingContext";
 import { useLanding } from "../../../hooks/useLanding";
 import { useLandingCart } from "../../../hooks/useLandingCart";
 import adhdWomenConfig from "../../../config/landing-config/adhd-women.config";
@@ -7,7 +8,7 @@ interface PricingSect {
 }
 
 export default function PricingSect({ className }: PricingSect = {}) {
-  const landingContext = useLanding(adhdWomenConfig);
+  const landingContext = useLandingContext();
   const landingCart = useLandingCart({ landingContext });
 
   const { config, user, isLoading: isLoadingUser } = landingContext;
@@ -18,7 +19,7 @@ export default function PricingSect({ className }: PricingSect = {}) {
     calculateSaving,
   } = landingCart;
 
-  if (!isLoadingUser || !config) {
+  if (isLoadingUser || !config) {
     return (
       <div className="flex justify-center items-center py-20">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
@@ -155,26 +156,6 @@ export default function PricingSect({ className }: PricingSect = {}) {
             </div>
           </div>
         </div>
-
-        {/* DEBUG INFO (RIMUOVI IN PRODUZIONE) */}
-        {process.env.NODE_ENV === "development" && (
-          <div className="mt-8 p-4 bg-gray-100 rounded-lg text-xs">
-            <div>
-              <strong>Debug Info:</strong>
-            </div>
-            <div>Utente: {user?.country || "Sconosciuto"}</div>
-            <div>Valuta rilevata: {user?.currency || "Non rilevata"}</div>
-            <div>Valuta display: {userCurrency}</div>
-            <div>Prodotti in carrello: {cart.itemsCount}</div>
-            <div>
-              Totale carrello: {formatPrice(cart.displayTotal, userCurrency)}
-            </div>
-            <div>
-              Stato conversione:{" "}
-              {cart.isConverting ? "Convertendo..." : "Pronto"}
-            </div>
-          </div>
-        )}
       </div>
     </section>
   );

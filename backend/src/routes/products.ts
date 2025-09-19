@@ -4,7 +4,7 @@ import {
   getProductById,
   convertProductPrice,
 } from "../controllers/productController";
-import { CurrencyService, currencyService } from "../services/currency";
+import { CurrencyService, currencyService } from "../services/currencyService";
 import { optionalAuth } from "../middleware/auth";
 
 const router = Router();

@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { currencyService } from "../services/currency";
+import { currencyService } from "../services/currencyService";
 
 export class CurrencyController {
   // CONVERSIONE SINGOLO PREZZO

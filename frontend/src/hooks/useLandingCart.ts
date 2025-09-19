@@ -19,7 +19,7 @@ export const useLandingCart = ({ landingContext }: UseLandingCart) => {
   // ========================
   useEffect(() => {
     if (!isLoadingUser && user && user.currency) {
-      if (user.currency === cart.getDisplayCurrency()) {
+      if (user.currency !== cart.getDisplayCurrency()) {
         console.log(
           `UPDATE CART ${cart.getDisplayCurrency()} TO ${user.currency}`
         );
@@ -80,9 +80,19 @@ export const useLandingCart = ({ landingContext }: UseLandingCart) => {
         GBP: "£",
         AUD: "A$",
         CAD: "C$",
+        JPY: "¥",
+        CHF: "Fr",
+        SEK: "kr",
+        NOK: "kr",
+        DKK: "kr",
       };
 
       const symbol = currencySymbol[displayCurrency] || displayCurrency;
+
+      if (displayCurrency === "JPY") {
+        return `${symbol}${Math.round(amount)}`;
+      }
+
       return `${symbol}${amount.toFixed(2)}`;
     },
     [user]
@@ -99,15 +109,16 @@ export const useLandingCart = ({ landingContext }: UseLandingCart) => {
     if (!config) return null;
 
     const currency = user?.currency || config.pricing.currency;
+    const savings = config.pricing.originalPrice - config.pricing.mainPrice;
+    const savingsPercentage = Math.round(
+      (savings / config.pricing.originalPrice) * 100
+    );
+
     return {
       originalPrice: config.pricing.originalPrice,
       mainPrice: config.pricing.mainPrice,
-      savings: config.pricing.originalPrice - config.pricing.mainPrice,
-      savingsPercentage: Math.round(
-        ((config.pricing.originalPrice - config.pricing.mainPrice) /
-          config.pricing.originalPrice) *
-          100
-      ),
+      savings,
+      savingsPercentage,
       currency,
     };
   }, [config, user]);

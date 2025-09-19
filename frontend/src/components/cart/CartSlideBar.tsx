@@ -150,11 +150,11 @@ export default function CartSlideBar({ className }: CartSlideBar = {}) {
   return (
     <div className={`fixed inset-0 z-50 ${className || ""}`}>
       <div
-        className="absolute inset-0 bg-black bg-opacity-50 transition-opacity"
+        className="absolute inset-0 bg-black/30 transition-opacity"
         onClick={handleOverlayClick}
       />
 
-      <div className="absolute right-0 top-0 h-full w-full max-w-md bg-white shadow-2xl">
+      <div className="absolute right-0 top-0 h-full w-full max-w-lg bg-white shadow-2xl transform transition-transform duration-300 ease-in-out">
         <div className="flex h-full flex-col">
           {/* HEADER */}
           <div className="flex items-center justify-between border-b border-gray-200 p-6">

@@ -6,7 +6,7 @@ export default function useCurrency() {
   const [error, setError] = useState<string | null>(null);
 
   const API_BASE_URL =
-    import.meta.env.VITE_API_BASE_URL || "http://localhost:3000/api";
+    import.meta.env.VITE_API_BASE_URL || "http://localhost:3001/api";
 
   // CONVERTITORE VALUTA
   const convertPrice = useCallback(

@@ -10,6 +10,8 @@ import FeaturesSect from "./sections/FeaturesSect";
 import TestimonialSect from "./sections/TestimonialSect";
 import FaqSect from "./sections/FaqSect";
 import PricingSect from "./sections/PricingSect";
+import CartSlideBar from "../cart/CartSlideBar";
+import CartIcon from "../cart/CartIcon";
 
 const LandingPageContent = () => {
   return (
@@ -32,6 +34,17 @@ export default function LandingPage({
     <div className={`min-h-screen ${className}`}>
       <LandingProvider config={config}>
         <LandingPageContent />
+        <CartSlideBar />
+        <div
+          style={{
+            position: "fixed",
+            bottom: "24px",
+            right: "24px",
+            zIndex: 9999,
+          }}
+        >
+          <CartIcon />
+        </div>
       </LandingProvider>
     </div>
   );

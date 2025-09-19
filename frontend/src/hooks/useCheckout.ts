@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useCart } from "./useCart";
-import { createCheckoutOrder } from "../lib/checkout";
+import { createCheckoutOrder } from "../services/checkout";
 import type {
   CheckoutItem,
   CheckoutRequest,

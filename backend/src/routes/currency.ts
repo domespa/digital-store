@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { CurrencyController } from "../controllers/currencyController";
-import { requireAdmin } from "../middleware/auth";
+import { requireAuthenticatedAdmin } from "../middleware/auth";
 
 const router = Router();
 
@@ -15,7 +15,15 @@ router.get("/supported", CurrencyController.getSupportedCurrencies);
 router.get("/format", CurrencyController.formatPrice);
 
 // ADMIN
-router.get("/cache-stats", requireAdmin, CurrencyController.getCacheStats);
-router.post("/clear-cache", requireAdmin, CurrencyController.clearCache);
+router.get(
+  "/cache-stats",
+  requireAuthenticatedAdmin,
+  CurrencyController.getCacheStats
+);
+router.post(
+  "/clear-cache",
+  requireAuthenticatedAdmin,
+  CurrencyController.clearCache
+);
 
 export default router;

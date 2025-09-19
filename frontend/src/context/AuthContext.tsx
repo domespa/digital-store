@@ -5,7 +5,7 @@ import {
   useState,
   useEffect,
 } from "react";
-import { auth } from "../lib/api";
+import { auth } from "../services/api";
 import type {
   LoginRequest,
   RegisterRequest,

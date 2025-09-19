@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { PrismaClient, Prisma } from "../generated/prisma";
-import { currencyService } from "../services/currency";
+import { currencyService } from "../services/currencyService";
 import {
   CreateProductRequest,
   UpdateProductRequest,

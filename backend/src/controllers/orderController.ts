@@ -17,7 +17,7 @@ import {
 } from "../types/order";
 import { stripe } from "../services/stripe";
 import { paypalService } from "../services/paypal";
-import { currencyService } from "../services/currency";
+import { currencyService } from "../services/currencyService";
 import EmailService from "../services/emailService";
 import { catchAsync } from "../utils/catchAsync";
 import { CustomError } from "../utils/customError";
