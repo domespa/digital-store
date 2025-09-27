@@ -36,7 +36,7 @@ export const useLandingCart = ({ landingContext }: UseLandingCart) => {
 
     const product: ProductToAdd = {
       id: `main-product-${config.productId}`,
-      productId: config.productId || "adhd-women-ebook",
+      productId: config.productId || "cmf6ygddx0001lui8epp8wl9o",
       name: config.hero.title,
       price: config.pricing.mainPrice,
       currency: config.pricing.currency,
@@ -140,7 +140,7 @@ export const useLandingCart = ({ landingContext }: UseLandingCart) => {
       toggleCart: cart.toggleCart,
     },
 
-    // + LE FUNZIONI
+    // LE FUNZIONI
     addMainProductToCart,
     addBonusToCart,
     formatPrice,
@@ -150,7 +150,7 @@ export const useLandingCart = ({ landingContext }: UseLandingCart) => {
     isLoadingUser,
     userCurrency: user?.currency,
 
-    // + I METODI PER LE CONVERSIONI DELLA VALUTA
+    // I METODI PER LE CONVERSIONI DELLA VALUTA
     updateCurrency: cart.updateCurrency,
     refreshRates: cart.refreshRates,
   };

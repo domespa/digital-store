@@ -79,6 +79,10 @@ router.get("/compare", AnalyticsController.comparePeriods);
 // POST /api/admin/analytics/export
 router.post("/export", AnalyticsController.exportAnalytics);
 
+// DATI AGGREGATI PER PERIODO PER GRAFICI
+// GET /api/admin/analytics/period-data?period=today&from=2024-01-01&to=2024-01-31
+router.get("/period-data", AnalyticsController.getPeriodData);
+
 // ==================== HEALTH CHECK ====================
 
 // HEALTH CHECK ANALYTICS SYSTEM

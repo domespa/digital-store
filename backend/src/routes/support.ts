@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { rateLimit } from "express-rate-limit";
+import { rateLimit, ipKeyGenerator } from "express-rate-limit";
 import { PrismaClient } from "../generated/prisma";
 import { createSupportRoutes } from "../controllers/supportController";
 import { SupportService } from "../services/supportService";
@@ -46,7 +46,9 @@ const createSupportRateLimiters = (
   const ticketCreationLimiter = rateLimit({
     windowMs: config?.ticketCreation?.windowMs || 60 * 60 * 1000, // 1 ora default
     max: config?.ticketCreation?.max || 5, // 5 ticket/ora default
-    keyGenerator: (req: any) => req.user?.id || req.ip,
+    keyGenerator: (req: any) => {
+      return req.user?.id || ipKeyGenerator(req);
+    },
     message: {
       error: "RATE_LIMIT_EXCEEDED",
       message: "Too many support tickets created. Please try again later.",
@@ -61,7 +63,9 @@ const createSupportRateLimiters = (
   const messagingLimiter = rateLimit({
     windowMs: config?.messaging?.windowMs || 5 * 60 * 1000, // 5 minuti default
     max: config?.messaging?.max || 20, // 20 messaggi/5min default
-    keyGenerator: (req: any) => req.user?.id || req.ip,
+    keyGenerator: (req: any) => {
+      return req.user?.id || ipKeyGenerator(req);
+    },
     message: {
       error: "RATE_LIMIT_EXCEEDED",
       message: "Too many messages sent. Please slow down.",
@@ -87,7 +91,6 @@ class SupportServiceFactory {
       throw new Error("PrismaClient is required for Support System");
     }
 
-    // WebSocketService è critico per il sistema di support real-time
     if (!services.websocketService) {
       throw new Error(
         "WebSocketService is required for Support System. " +
@@ -102,13 +105,11 @@ class SupportServiceFactory {
   ): SupportService {
     this.validateRequiredServices(prisma, existingServices);
 
-    // Inizializza servizi mancanti con configurazione production-ready
     const emailService = existingServices.emailService || new EmailService();
     const uploadService =
       existingServices.uploadService || new FileUploadService();
-    const websocketService = existingServices.websocketService!; // Validato sopra
+    const websocketService = existingServices.websocketService!;
 
-    // NotificationService richiede Prisma - assicurati che sia compatibile
     const notificationService =
       existingServices.notificationService ||
       new NotificationService(websocketService, emailService);
@@ -132,10 +133,8 @@ const createHealthCheckRoute = (prisma: PrismaClient): Router => {
 
   router.get("/health", async (req, res) => {
     try {
-      // Test database connectivity
       await prisma.$queryRaw`SELECT 1`;
 
-      // Test support configuration
       const configCount = await prisma.supportConfig.count();
 
       res.status(200).json({
@@ -169,14 +168,14 @@ export function setupSupportRoutes(
   options: SupportSetupOptions = {}
 ): Router {
   try {
-    // Crea il router principale
+    // CREA ROUTER
     const router = Router();
 
-    // Crea rate limiters
+    // I LIMITI
     const { ticketCreationLimiter, messagingLimiter } =
       createSupportRateLimiters(options.rateLimitConfig);
 
-    // Crea il SupportService usando la factory
+    // SUPPORTO
     const supportService = SupportServiceFactory.createSupportService(
       prisma,
       existingServices
@@ -199,7 +198,7 @@ export function setupSupportRoutes(
     }
 
     if (options.enableAgentManagement) {
-      // PROSSIMAMENTE
+      // IN FUTURO FLI AGENTI
       console.warn("Agent management service not yet implemented");
     }
 
@@ -211,28 +210,23 @@ export function setupSupportRoutes(
       router.use("/support/analytics", analyticsRoutes);
     }
 
-    // Aggiungi health check
     router.use("/support", createHealthCheckRoute(prisma));
 
-    // Crea le routes principali del support
+    // ROTTE DI SUPPORTO
     const supportRoutes = createSupportRoutes(
       supportService,
       analyticsService
-      // agentService
+      // aQUI ANDRANNO QUELLI DEGLI AGENTI
     );
 
-    // Applica rate limiting specifico alle routes critiche
     router.use("/support/tickets", ticketCreationLimiter);
     router.use("/support/tickets/*/messages", messagingLimiter);
 
-    // Monta le routes del support
     router.use("/support", supportRoutes);
 
-    // Log successful initialization
     console.log("Support System initialized successfully", {
       features: {
         analytics: !!analyticsService,
-        // agentManagement: !!agentService,
         rateLimiting: true,
         healthCheck: true,
       },
@@ -261,23 +255,18 @@ const createHealthCheckWithAnalytics = (
 
   router.get("/health", async (req, res) => {
     try {
-      // Database test
       await prisma.$queryRaw`SELECT 1`;
 
-      // Support config test
       const configCount = await prisma.supportConfig.count();
 
-      // Analytics test (se abilitato)
       let analyticsStatus = "disabled";
       let analyticsHealth = {};
 
       if (analyticsService) {
         try {
-          // Test basic analytics functionality
           await analyticsService.testAnalytics();
           analyticsStatus = "healthy";
 
-          // Get analytics health metrics
           analyticsHealth = {
             aggregationStatus: "running",
             lastHourlyUpdate: new Date(),
@@ -324,17 +313,14 @@ export function setupSupportRoutesAdvanced(
   const router = Router();
   const basePath = options.basePath || "/support";
 
-  // Applica middleware personalizzato se fornito
   if (options.customMiddleware?.length) {
     options.customMiddleware.forEach((middleware) => {
       router.use(basePath, middleware);
     });
   }
 
-  // Setup standard
   const supportRouter = setupSupportRoutes(prisma, existingServices, options);
 
-  // Metrics endpoint (se abilitato)
   if (options.enableMetrics) {
     router.get(`${basePath}/metrics`, async (req, res) => {
       try {
@@ -356,7 +342,6 @@ export function setupSupportRoutesAdvanced(
     });
   }
 
-  // Monta il router del support
   router.use(supportRouter);
 
   return router;
@@ -371,7 +356,7 @@ const createAnalyticsRoutes = (
 ): Router => {
   const router = Router();
 
-  // Dashboard endpoint
+  // DASHBOARD
   router.get("/dashboard", async (req, res) => {
     try {
       const { businessModel, tenantId, from, to } = req.query;
@@ -404,7 +389,7 @@ const createAnalyticsRoutes = (
     }
   });
 
-  // Real-time metrics endpoint
+  // TEMPO REALE
   if (realTimeService) {
     router.get("/realtime", async (req, res) => {
       try {
@@ -424,7 +409,6 @@ const createAnalyticsRoutes = (
       }
     });
 
-    // WebSocket subscription endpoint
     router.post("/subscribe", async (req, res) => {
       try {
         const { userId, businessModel, tenantId } = req.body;
@@ -445,7 +429,6 @@ const createAnalyticsRoutes = (
     });
   }
 
-  // Custom reports endpoint
   router.post("/reports", async (req, res) => {
     try {
       const { config, businessModel, tenantId } = req.body;
@@ -466,7 +449,6 @@ const createAnalyticsRoutes = (
     }
   });
 
-  // Export endpoint
   router.get("/export", async (req, res) => {
     try {
       const { format, filename, data } = req.query;
@@ -499,13 +481,10 @@ const createAnalyticsRoutes = (
 // ===========================================
 
 export default setupSupportRoutes;
-
-// Export anche le utilities
 export {
   SupportServiceFactory,
   createSupportRateLimiters,
   createHealthCheckRoute,
 };
 
-// Export types per TypeScript
 export type { ExistingServices, SupportSetupOptions };

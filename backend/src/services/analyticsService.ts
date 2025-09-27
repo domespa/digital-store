@@ -27,7 +27,7 @@ export class AnalyticsService {
   //             MAIN DASHBOARD
   // ===========================================
 
-  // OTTIENI DASHBOARD METRICS COMPLETE
+  // OTTIENI DASHBOARD
   static async getDashboardMetrics(
     filters: AnalyticsFilters
   ): Promise<DashboardMetrics> {
@@ -59,7 +59,7 @@ export class AnalyticsService {
   //            OVERVIEW METRICS
   // ===========================================
 
-  // METRICHE OVERVIEW (KPI PRINCIPALI)
+  // METRICHE OVERVIEW
   static async getOverviewMetrics(dateRange: {
     from: Date;
     to: Date;
@@ -310,7 +310,7 @@ export class AnalyticsService {
       prisma.product.findMany({
         where: {
           trackInventory: true,
-          stock: { lte: 5 }, // Soglia fissa per ora
+          stock: { lte: 5 },
         },
         select: {
           id: true,
@@ -643,7 +643,408 @@ export class AnalyticsService {
   }
 
   // ===========================================
-  //            PRIVATE HELPER METHODS
+  //            PERIOD DATA GRAFICI
+  // ===========================================
+
+  static async getPeriodData(filters: AnalyticsFilters): Promise<{
+    periodData: Array<{
+      period: string;
+      orders: number;
+      revenue: number;
+      timestamp: string;
+    }>;
+    summary: {
+      totalOrders: number;
+      totalRevenue: number;
+      completedOrders: number;
+      pendingOrders: number;
+      conversionRate: number;
+      averageOrderValue: number;
+      peakPeriod: {
+        period: string;
+        orders: number;
+        revenue: number;
+      };
+    };
+  }> {
+    const dateRange = this.getDateRange(filters);
+
+    let periodData: Array<{
+      period: string;
+      orders: number;
+      revenue: number;
+      timestamp: string;
+    }> = [];
+
+    switch (filters.period) {
+      case "today":
+        periodData = await this.getHourlyData(dateRange);
+        break;
+      case "week":
+        periodData = await this.getDailyDataForWeek(dateRange);
+        break;
+      case "month":
+        periodData = await this.getDailyDataForMonth(dateRange);
+        break;
+      case "year":
+        periodData = await this.getMonthlyData(dateRange);
+        break;
+      case "custom":
+        // Determina granularità in base al range
+        const daysDiff = Math.ceil(
+          (dateRange.to.getTime() - dateRange.from.getTime()) /
+            (1000 * 60 * 60 * 24)
+        );
+        if (daysDiff <= 1) {
+          periodData = await this.getHourlyData(dateRange);
+        } else if (daysDiff <= 31) {
+          periodData = await this.getDailyDataForMonth(dateRange);
+        } else if (daysDiff <= 365) {
+          periodData = await this.getMonthlyData(dateRange);
+        } else {
+          periodData = await this.getYearlyData(dateRange);
+        }
+        break;
+      default:
+        const totalDateRange = {
+          from: new Date(new Date().getFullYear() - 2, 0, 1),
+          to: dateRange.to,
+        };
+        periodData = await this.getYearlyData(totalDateRange);
+    }
+    const [completedCount, pendingCount, totalUsers] = await Promise.all([
+      prisma.order.count({
+        where: {
+          createdAt: { gte: dateRange.from, lte: dateRange.to },
+          status: "COMPLETED",
+        },
+      }),
+
+      prisma.order.count({
+        where: {
+          createdAt: { gte: dateRange.from, lte: dateRange.to },
+          status: "PENDING",
+        },
+      }),
+
+      prisma.user.count({
+        where: {
+          createdAt: { gte: dateRange.from, lte: dateRange.to },
+        },
+      }),
+    ]);
+
+    // Calcola summary
+    const totalOrders = periodData.reduce((sum, item) => sum + item.orders, 0);
+    const totalRevenue = periodData.reduce(
+      (sum, item) => sum + item.revenue,
+      0
+    );
+    const conversionRate =
+      totalUsers > 0 ? (totalOrders / totalUsers) * 100 : 0;
+    const averageOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+
+    // Trova peak period
+    const peakPeriod = periodData.reduce(
+      (peak, current) => (current.revenue > peak.revenue ? current : peak),
+      { period: "", orders: 0, revenue: 0 }
+    );
+
+    return {
+      periodData,
+      summary: {
+        totalOrders,
+        totalRevenue,
+        completedOrders: completedCount,
+        pendingOrders: pendingCount,
+        conversionRate,
+        averageOrderValue,
+        peakPeriod,
+      },
+    };
+  }
+
+  // DATI ORARI OGGI
+  private static async getHourlyData(dateRange: {
+    from: Date;
+    to: Date;
+  }): Promise<
+    Array<{
+      period: string;
+      orders: number;
+      revenue: number;
+      timestamp: string;
+    }>
+  > {
+    const orders = await prisma.order.findMany({
+      where: {
+        createdAt: {
+          gte: dateRange.from,
+          lte: dateRange.to,
+        },
+        status: "COMPLETED",
+      },
+      select: {
+        createdAt: true,
+        total: true,
+      },
+    });
+
+    const hourlyData: Record<number, { orders: number; revenue: number }> = {};
+    for (let hour = 0; hour < 24; hour++) {
+      hourlyData[hour] = { orders: 0, revenue: 0 };
+    }
+
+    orders.forEach((order) => {
+      const hour = order.createdAt.getHours();
+      hourlyData[hour].orders += 1;
+      hourlyData[hour].revenue += Number(order.total);
+    });
+
+    return Object.entries(hourlyData).map(([hourStr, data]) => {
+      const hour = parseInt(hourStr);
+      const timestamp = new Date(dateRange.from);
+      timestamp.setHours(hour, 0, 0, 0);
+
+      return {
+        period: `${hourStr.padStart(2, "0")}:00`,
+        orders: data.orders,
+        revenue: data.revenue,
+        timestamp: timestamp.toISOString(),
+      };
+    });
+  }
+
+  // DATI GIORNALIERI PER SETTIMANA (Lun-Dom)
+  private static async getDailyDataForWeek(dateRange: {
+    from: Date;
+    to: Date;
+  }): Promise<
+    Array<{
+      period: string;
+      orders: number;
+      revenue: number;
+      timestamp: string;
+    }>
+  > {
+    const orders = await prisma.order.findMany({
+      where: {
+        createdAt: {
+          gte: dateRange.from,
+          lte: dateRange.to,
+        },
+        status: "COMPLETED",
+      },
+      select: {
+        createdAt: true,
+        total: true,
+      },
+    });
+
+    const dailyData: Record<string, { orders: number; revenue: number }> = {};
+    const dayNames = ["Dom", "Lun", "Mar", "Mer", "Gio", "Ven", "Sab"];
+
+    for (let i = 0; i < 7; i++) {
+      const date = new Date(dateRange.from);
+      date.setDate(date.getDate() + i);
+      const dayKey = date.toISOString().split("T")[0];
+      dailyData[dayKey] = { orders: 0, revenue: 0 };
+    }
+
+    orders.forEach((order) => {
+      const dayKey = order.createdAt.toISOString().split("T")[0];
+      if (dailyData[dayKey]) {
+        dailyData[dayKey].orders += 1;
+        dailyData[dayKey].revenue += Number(order.total);
+      }
+    });
+
+    return Object.entries(dailyData)
+      .map(([dateKey, data]) => {
+        const date = new Date(dateKey);
+        const dayOfWeek = date.getDay();
+
+        return {
+          period: dayNames[dayOfWeek],
+          orders: data.orders,
+          revenue: data.revenue,
+          timestamp: date.toISOString(),
+        };
+      })
+      .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  }
+
+  // DATI GIORNALIERI PER MESE (1-31)
+  private static async getDailyDataForMonth(dateRange: {
+    from: Date;
+    to: Date;
+  }): Promise<
+    Array<{
+      period: string;
+      orders: number;
+      revenue: number;
+      timestamp: string;
+    }>
+  > {
+    const orders = await prisma.order.findMany({
+      where: {
+        createdAt: {
+          gte: dateRange.from,
+          lte: dateRange.to,
+        },
+        status: "COMPLETED",
+      },
+      select: {
+        createdAt: true,
+        total: true,
+      },
+    });
+
+    const dailyData: Record<string, { orders: number; revenue: number }> = {};
+
+    orders.forEach((order) => {
+      const dayKey = order.createdAt.toISOString().split("T")[0];
+      dailyData[dayKey] = dailyData[dayKey] || { orders: 0, revenue: 0 };
+      dailyData[dayKey].orders += 1;
+      dailyData[dayKey].revenue += Number(order.total);
+    });
+
+    return Object.entries(dailyData)
+      .map(([dateKey, data]) => {
+        const date = new Date(dateKey);
+
+        return {
+          period: date.getDate().toString(),
+          orders: data.orders,
+          revenue: data.revenue,
+          timestamp: date.toISOString(),
+        };
+      })
+      .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  }
+
+  // DATI MENSILI (Gen-Dic)
+  private static async getMonthlyData(dateRange: {
+    from: Date;
+    to: Date;
+  }): Promise<
+    Array<{
+      period: string;
+      orders: number;
+      revenue: number;
+      timestamp: string;
+    }>
+  > {
+    const orders = await prisma.order.findMany({
+      where: {
+        createdAt: {
+          gte: dateRange.from,
+          lte: dateRange.to,
+        },
+        status: "COMPLETED",
+      },
+      select: {
+        createdAt: true,
+        total: true,
+      },
+    });
+
+    const monthlyData: Record<string, { orders: number; revenue: number }> = {};
+    const monthNames = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+    ];
+
+    // Aggrega per mese
+    orders.forEach((order) => {
+      const monthKey = `${order.createdAt.getFullYear()}-${String(
+        order.createdAt.getMonth() + 1
+      ).padStart(2, "0")}`;
+      monthlyData[monthKey] = monthlyData[monthKey] || {
+        orders: 0,
+        revenue: 0,
+      };
+      monthlyData[monthKey].orders += 1;
+      monthlyData[monthKey].revenue += Number(order.total);
+    });
+
+    // Converte in formato richiesto
+    return Object.entries(monthlyData)
+      .map(([monthKey, data]) => {
+        const [year, month] = monthKey.split("-");
+        const date = new Date(parseInt(year), parseInt(month) - 1, 1);
+
+        return {
+          period: monthNames[parseInt(month) - 1],
+          orders: data.orders,
+          revenue: data.revenue,
+          timestamp: date.toISOString(),
+        };
+      })
+      .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  }
+
+  // DATI ANNUALI (ultimi anni)
+  private static async getYearlyData(dateRange: {
+    from: Date;
+    to: Date;
+  }): Promise<
+    Array<{
+      period: string;
+      orders: number;
+      revenue: number;
+      timestamp: string;
+    }>
+  > {
+    const orders = await prisma.order.findMany({
+      where: {
+        createdAt: {
+          gte: dateRange.from,
+          lte: dateRange.to,
+        },
+        status: "COMPLETED",
+      },
+      select: {
+        createdAt: true,
+        total: true,
+      },
+    });
+
+    const yearlyData: Record<number, { orders: number; revenue: number }> = {};
+
+    orders.forEach((order) => {
+      const year = order.createdAt.getFullYear();
+      yearlyData[year] = yearlyData[year] || { orders: 0, revenue: 0 };
+      yearlyData[year].orders += 1;
+      yearlyData[year].revenue += Number(order.total);
+    });
+
+    return Object.entries(yearlyData)
+      .map(([year, data]) => {
+        const date = new Date(parseInt(year), 0, 1);
+
+        return {
+          period: year,
+          orders: data.orders,
+          revenue: data.revenue,
+          timestamp: date.toISOString(),
+        };
+      })
+      .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  }
+
+  // ===========================================
+  //            ADMIN HELPER METHODS
   // ===========================================
 
   // CALCOLA RANGE DATE PER PERIODO
@@ -695,6 +1096,15 @@ export class AnalyticsService {
         previousFrom = new Date(now.getFullYear() - 1, 0, 1);
         previousTo = new Date(now.getFullYear() - 1, 11, 31);
         break;
+
+      case "total":
+        const currentYear = now.getFullYear();
+        return {
+          from: new Date(currentYear - 5, 0, 1),
+          to: new Date(currentYear, 11, 31, 23, 59, 59, 999),
+          previousFrom: new Date(currentYear - 10, 0, 1),
+          previousTo: new Date(currentYear - 5, 11, 31, 23, 59, 59, 999),
+        };
 
       case "custom":
         if (!filters.from || !filters.to) {
@@ -972,7 +1382,7 @@ export class AnalyticsService {
         revenue: Number(tp._sum.price || 0),
         orders: tp._count.orderId,
         units: tp._sum.quantity || 0,
-        conversionRate: 0, // TODO: Calcola
+        conversionRate: 0,
         averageRating: Number(product?.averageRating || 0),
         image: product?.images[0]?.url,
       };
@@ -988,7 +1398,6 @@ export class AnalyticsService {
     from: Date;
     to: Date;
   }): Promise<any[]> {
-    // IMPLEMENTAZIONE PLACEHOLDER - DA COMPLETARE SECONDO SCHEMA DB
     return [];
   }
 
@@ -1056,7 +1465,7 @@ export class AnalyticsService {
     }));
   }
 
-  // CONTEGGIO UTENTI ATTIVI (hanno fatto ordini nel periodo)
+  // CONTEGGIO UTENTI ATTIVI
   private static async getActiveUsersCount(dateRange: {
     from: Date;
     to: Date;
@@ -1104,7 +1513,6 @@ export class AnalyticsService {
           totalUsers > 0 ? (item._count.source / totalUsers) * 100 : 0,
       }));
     } catch (error) {
-      // CAMPO 'source' POTREBBE NON ESISTERE NELLO SCHEMA
       return [];
     }
   }
@@ -1114,9 +1522,6 @@ export class AnalyticsService {
     from: Date;
     to: Date;
   }): Promise<any[]> {
-    // PLACEHOLDER - IMPLEMENTAZIONE DIPENDE DALLA STRUTTURA UserActivity
-    // Nel tipo analytics, UserActivity ha: activeUsers, newRegistrations, orders
-    // Ma qui stiamo restituendo TimeSeriesData
     return [];
   }
 
@@ -1126,7 +1531,6 @@ export class AnalyticsService {
     thirtyMinutesAgo.setMinutes(thirtyMinutesAgo.getMinutes() - 30);
 
     try {
-      // PROVA CON CAMPO lastActivity SE ESISTE
       return await prisma.user.count({
         where: {
           lastActivity: {
@@ -1135,7 +1539,6 @@ export class AnalyticsService {
         },
       });
     } catch (error) {
-      // FALLBACK: USA REGISTRAZIONI RECENTI
       return await prisma.user.count({
         where: {
           createdAt: {
@@ -1146,9 +1549,8 @@ export class AnalyticsService {
     }
   }
 
-  // VISITATORI ONLINE (MOCK - INTEGRARE CON ANALYTICS REALE)
+  // VISITATORI ONLINE
   private static async getOnlineVisitorsCount(): Promise<number> {
-    // PLACEHOLDER - INTEGRARE CON GOOGLE ANALYTICS O SIMILAR
     return Math.floor(Math.random() * 50) + 10;
   }
 

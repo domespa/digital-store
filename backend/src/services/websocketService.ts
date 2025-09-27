@@ -91,6 +91,12 @@ class WebSocketService {
           handshake.auth?.token ||
           handshake.headers?.authorization?.replace("Bearer ", "");
 
+        console.log("🔍 WEBSOCKET AUTH DEBUG:", {
+          hasToken: !!token,
+          tokenLength: token?.length,
+          authMethod: handshake.auth?.token ? "auth.token" : "header",
+        });
+
         if (!token) {
           throw new CustomError("Authentication token required", 401);
         }
@@ -100,19 +106,24 @@ class WebSocketService {
           process.env.JWT_SECRET!
         ) as JwtDecoded;
 
-        // USA SOLO CAMPI CHE ESISTONO NEL TUO SCHEMA USER
         const user = await prisma.user.findUnique({
           where: { id: decoded.userId },
           select: {
             id: true,
             role: true,
-            emailVerified: true, // SOLO QUESTO CAMPO PER VERIFICARE SE L'UTENTE È ATTIVO
+            emailVerified: true,
           },
         });
 
+        console.log("🔍 FOUND USER:", user);
+
         // CONTROLLO SE L'UTENTE ESISTE ED È VERIFICATO
-        if (!user || !user.emailVerified) {
-          throw new CustomError("Invalid or unverified user", 401);
+        if (!user) {
+          throw new CustomError("User not found", 401);
+        }
+
+        if (!user.emailVerified && user.role !== "ADMIN") {
+          throw new CustomError("User not verified", 401);
         }
 
         const authenticatedSocket = socket as AuthenticatedSocket;
@@ -219,14 +230,12 @@ class WebSocketService {
   private async handleConnection(socket: AuthenticatedSocket): Promise<void> {
     const { userId } = socket;
 
-    // AGGIUNGI AL TRACKING INTERNO
     if (!this.connectedUsers.has(userId)) {
       this.connectedUsers.set(userId, new Set());
     }
     this.connectedUsers.get(userId)!.add(socket.id);
     this.socketToUser.set(socket.id, userId);
 
-    // SALVA NEL DATABASE - SE LA TABELLA ESISTE
     try {
       const handshake = socket.handshake as SocketHandshake;
       await prisma.webSocketConnection.create({
@@ -239,16 +248,13 @@ class WebSocketService {
         },
       });
     } catch (error) {
-      // SE LA TABELLA webSocketConnection NON ESISTE ANCORA, CONTINUA SENZA SALVARE
       logger.warn(
         "WebSocketConnection table not found, skipping database save"
       );
     }
 
-    // JOIN USER-SPECIFIC ROOM
     socket.join(`user:${userId}`);
 
-    // JOIN ROLE-SPECIFIC ROOM
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: { role: true },
@@ -286,12 +292,12 @@ class WebSocketService {
 
     for (const channel of subscribedChannels) {
       if (channel === "admin" && socket.userRole !== "ADMIN") {
-        continue; // SKIP ADMIN CHANNEL PER NON-ADMIN USERS
+        continue;
       }
       socket.join(channel);
     }
 
-    // AGGIORNA DATABASE SE ESISTE
+    // AGGIORNA DATABASE
     try {
       await prisma.webSocketConnection.updateMany({
         where: { userId: socket.userId, socketId: socket.id },
@@ -317,7 +323,7 @@ class WebSocketService {
       socket.leave(channel);
     }
 
-    // AGGIORNA DATABASE SE ESISTE
+    // AGGIORNA DATABASE
     try {
       const connection = await prisma.webSocketConnection.findUnique({
         where: { socketId: socket.id },
@@ -352,7 +358,7 @@ class WebSocketService {
     }
     this.socketToUser.delete(socket.id);
 
-    // AGGIORNA DATABASE SE ESISTE
+    // AGGIORNA DATABASE
     try {
       await prisma.webSocketConnection.updateMany({
         where: { socketId: socket.id },
@@ -378,7 +384,7 @@ class WebSocketService {
     notification: NotificationPayload
   ): Promise<boolean> {
     try {
-      // CONTROLLA PREFERENZE UTENTE SE LA TABELLA ESISTE
+      // CONTROLLA PREFERENZE UTENTE
       let preferences: {
         enableWebSocket: boolean;
         quietHours?: unknown;
@@ -389,7 +395,6 @@ class WebSocketService {
           where: { userId },
         });
       } catch (error) {
-        // DEFAULT SE LA TABELLA NON ESISTE
         preferences = { enableWebSocket: true };
       }
 
@@ -397,7 +402,7 @@ class WebSocketService {
         return false;
       }
 
-      // CONTROLLA QUIET HOURS SE ESISTONO
+      // CONTROLLA QUIET HOURS
       if (preferences.quietHours) {
         const parsedQuietHours = this.parseQuietHours(preferences.quietHours);
         if (parsedQuietHours && this.isQuietHour(parsedQuietHours)) {
@@ -408,7 +413,6 @@ class WebSocketService {
       // INVIA A TUTTI I SOCKET DELL'UTENTE CONNESSI
       this.io.to(`user:${userId}`).emit("notification", notification);
 
-      // MARCA COME DELIVERED SE LA TABELLA ESISTE
       try {
         await prisma.notification.update({
           where: { id: notification.id },
@@ -531,7 +535,6 @@ class WebSocketService {
         },
       });
     } catch (error) {
-      // RITORNA 0 SE LA TABELLA NON ESISTE ANCORA
       return 0;
     }
   }
@@ -542,9 +545,7 @@ class WebSocketService {
         where: { socketId },
         data: { lastPing: new Date() },
       })
-      .catch(() => {
-        // SILENTLY FAIL SE LA TABELLA NON ESISTE
-      });
+      .catch(() => {});
   }
 
   // ===========================================
@@ -566,7 +567,7 @@ class WebSocketService {
     }
   }
 
-  // HELPER METHOD PER PARSARE SAFELY QuietHours DA JsonValue
+  // HELPER METHOD PER PARSARE SAFELY
   private parseQuietHours(quietHours: unknown): QuietHours | null {
     if (!quietHours || typeof quietHours !== "object") {
       return null;
@@ -617,14 +618,11 @@ class WebSocketService {
             });
           }
         }
-      } catch (error) {
-        // SILENTLY FAIL SE LA TABELLA NON ESISTE
-      }
-    }, 60000); // EVERY MINUTE
+      } catch (error) {}
+    }, 60000); // OGNI MINUTO
   }
 
   private setupCleanupTasks(): void {
-    // CLEAN UP OLD CONNECTIONS EVERY HOUR
     setInterval(async () => {
       try {
         const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -637,9 +635,7 @@ class WebSocketService {
             },
           },
         });
-      } catch (error) {
-        // SILENTLY FAIL SE LA TABELLA NON ESISTE
-      }
+      } catch (error) {}
     }, 60 * 60 * 1000); // EVERY HOUR
   }
 
@@ -703,7 +699,7 @@ class WebSocketService {
       clearInterval(this.heartbeatInterval);
     }
 
-    // MARCA TUTTE LE CONNESSIONI ATTIVE COME INACTIVE SE LA TABELLA ESISTE
+    // MARCA TUTTE LE CONNESSIONI ATTIVE COME INACTIVE
     try {
       await prisma.webSocketConnection.updateMany({
         where: { isActive: true },
@@ -713,7 +709,7 @@ class WebSocketService {
         },
       });
     } catch (error) {
-      // SILENTLY FAIL SE LA TABELLA NON ESISTE
+      // SILENTLY FAIL
     }
 
     this.io.close();

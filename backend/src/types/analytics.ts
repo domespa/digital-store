@@ -7,7 +7,14 @@ export interface DashboardMetrics {
   timeRange: {
     from: Date;
     to: Date;
-    period: "today" | "week" | "month" | "quarter" | "year" | "custom";
+    period:
+      | "today"
+      | "week"
+      | "month"
+      | "quarter"
+      | "year"
+      | "total"
+      | "custom";
   };
 }
 
@@ -98,8 +105,7 @@ export interface ReviewMetrics {
   reviewsOverTime: TimeSeriesData[];
 }
 
-// SUPPORTING INTERFACES
-
+// INTERFACCE DI SUPPORTO
 export interface TimeSeriesData {
   date: string;
   value: number;
@@ -185,10 +191,9 @@ export interface RecentReview {
   createdAt: Date;
 }
 
-// QUERY INTERFACES
-
+// QUERY INTERFACCE
 export interface AnalyticsFilters {
-  period: "today" | "week" | "month" | "quarter" | "year" | "custom";
+  period: "today" | "week" | "month" | "quarter" | "year" | "total" | "custom";
   from?: Date;
   to?: Date;
   categoryId?: string;
@@ -243,7 +248,7 @@ export interface ExportResult {
   expiresAt: Date;
 }
 
-// COMPARISON INTERFACES
+// COMPARISON INTERFACCE
 
 export interface PeriodComparison {
   current: {

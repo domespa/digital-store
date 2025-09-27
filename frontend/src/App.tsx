@@ -4,7 +4,7 @@ import { CartProvider } from "./context/CartContext";
 import StripeProvider from "./providers/StripeProvider";
 import LandingPage from "./components/landing/LandingPage";
 import adhdWomenConfig from "./config/landing-config/adhd-women.config";
-import AdminApp from "./components/admin/AdminApp";
+import AdminRoute from "./components/admin/AdminRoute";
 
 function CustomerApp() {
   return (
@@ -56,7 +56,7 @@ function AppContent() {
 
   return (
     <>
-      {mode === "customer" ? <CustomerApp /> : <AdminApp />}
+      {mode === "customer" ? <CustomerApp /> : <AdminRoute />}
       <DevModeSwitcher />
     </>
   );

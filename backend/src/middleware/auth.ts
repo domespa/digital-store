@@ -93,6 +93,11 @@ export const authenticateToken = async (
 
     // AGGIUNGIAMO L'USER ALLA REQUEST
     req.user = user;
+    console.log("Authorization header:", req.headers["authorization"]);
+    console.log("Token extracted:", token);
+    console.log("Decoded JWT:", decoded);
+    console.log("User found:", user);
+
     next();
   } catch (error: unknown) {
     console.error("Auth middleware error:", error);

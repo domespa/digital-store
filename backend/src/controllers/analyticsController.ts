@@ -11,7 +11,7 @@ interface AdminRequest extends Request {
 
 // QUERY PARAMETERS
 interface AnalyticsQueryParams {
-  period?: "today" | "week" | "month" | "quarter" | "year" | "custom";
+  period?: "today" | "week" | "month" | "quarter" | "year" | "total" | "custom";
   from?: string;
   to?: string;
   categoryId?: string;
@@ -177,64 +177,6 @@ export class AnalyticsController {
     }
   );
 
-  // EXPORT DATI ANALYTICS
-  // POST /api/admin/analytics/export
-  static exportAnalytics = catchAsync(
-    async (req: AdminRequest, res: Response) => {
-      const { format, metrics, period, from, to } = req.body;
-
-      if (!format || !metrics) {
-        throw new AnalyticsError(
-          "Format e metrics sono richiesti per l'export",
-          400
-        );
-      }
-
-      // TODO: Implementa export functionality
-      res.json({
-        success: true,
-        message: "Export functionality non ancora implementata",
-        data: {
-          format,
-          metrics,
-          period,
-          estimatedSize: "2.5MB",
-          estimatedRows: 1500,
-        },
-      });
-    }
-  );
-
-  // COMPARAZIONE PERIODI
-  // GET /api/admin/analytics/compare
-  static comparePeriods = catchAsync(
-    async (req: AdminRequest, res: Response) => {
-      const { currentPeriod, previousPeriod, metric } = req.query;
-
-      if (!currentPeriod || !previousPeriod || !metric) {
-        throw new AnalyticsError(
-          "currentPeriod, previousPeriod e metric sono richiesti",
-          400
-        );
-      }
-
-      // TODO: Implementa logica comparazione
-      res.json({
-        success: true,
-        data: {
-          comparison: {
-            current: { period: currentPeriod, value: 0 },
-            previous: { period: previousPeriod, value: 0 },
-            change: 0,
-            changePercent: 0,
-            trend: "stable" as const,
-          },
-          metric,
-        },
-      });
-    }
-  );
-
   // TOP PRODUCTS PER PERIODO
   // GET /api/admin/analytics/top-products
   static getTopProducts = catchAsync(
@@ -260,49 +202,42 @@ export class AnalyticsController {
     }
   );
 
-  // PERFORMANCE PER CATEGORIA
-  // GET /api/admin/analytics/categories
-  static getCategoryPerformance = catchAsync(
+  // GET /api/admin/analytics/period-data
+  static getPeriodData = catchAsync(
     async (req: AdminRequest, res: Response) => {
-      const filters = this.parseAnalyticsFilters(
-        req.query as AnalyticsQueryParams
-      );
+      const { period, from, to } = req.query;
 
-      // TODO: Implementa category performance
+      // Validazione parametri
+      if (
+        !period ||
+        !["today", "week", "month", "year", "total"].includes(period as string)
+      ) {
+        throw new AnalyticsError(
+          "Parametro period richiesto: today|week|month|year|total",
+          400
+        );
+      }
+
+      const filters: AnalyticsFilters = {
+        period: period as
+          | "today"
+          | "week"
+          | "month"
+          | "year"
+          | "total"
+          | "custom",
+        ...(from ? { from: new Date(from as string) } : {}),
+        ...(to ? { to: new Date(to as string) } : {}),
+      };
+
+      const data = await AnalyticsService.getPeriodData(filters);
+
       res.json({
         success: true,
-        data: {
-          categories: [],
-          period: filters.period,
-        },
+        data,
       });
     }
   );
-
-  // TREND ANALYSIS
-  // GET /api/admin/analytics/trends
-  static getTrends = catchAsync(async (req: AdminRequest, res: Response) => {
-    const { metric, period } = req.query;
-
-    if (!metric) {
-      throw new AnalyticsError("Metric è richiesto per trend analysis", 400);
-    }
-
-    // TODO: Implementa trend analysis
-    res.json({
-      success: true,
-      data: {
-        metric,
-        period: period || "month",
-        trend: "stable" as const,
-        prediction: {
-          nextValue: 0,
-          confidence: 0,
-        },
-        data: [],
-      },
-    });
-  });
 
   // ==================== METODI HELPER PRIVATI ====================
 

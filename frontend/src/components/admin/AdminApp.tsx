@@ -5,6 +5,7 @@ import OrdersPage from "../../pages/admin/OrdersPage";
 import OrderDetailPage from "../../pages/admin/OrderDetailPage";
 import UsersOnlinePage from "../../pages/admin/UsersOnlinePage";
 import UserMapPage from "../../pages/admin/UserMapPage";
+import ProductsPage from "../../pages/admin/ProductsPage";
 
 export default function AdminApp() {
   const { adminPage, navigateToAdminPage } = useApp();
@@ -21,6 +22,8 @@ export default function AdminApp() {
         return <UsersOnlinePage />;
       case "user-map":
         return <UserMapPage />;
+      case "products":
+        return <ProductsPage />;
       case "analytics":
         return <div>Analytics Page (Coming Soon)</div>;
       case "support":

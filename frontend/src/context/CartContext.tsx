@@ -25,7 +25,8 @@ type CartAction =
         displayTotal: number;
       };
     }
-  | { type: "UPDATE_CURRENCY_ERROR" };
+  | { type: "UPDATE_CURRENCY_ERROR" }
+  | { type: "SET_INITIAL_CURRENCY"; payload: string };
 
 const initCartState: CartState = {
   items: [],
@@ -203,6 +204,18 @@ function cartReducer(state: CartState, action: CartAction): CartState {
         isConverting: false,
       };
     }
+
+    case "SET_INITIAL_CURRENCY": {
+      // SOLO SE VUOTO
+      if (state.items.length === 0 && state.displayCurrency === "USD") {
+        return {
+          ...state,
+          originalCurrency: action.payload,
+          displayCurrency: action.payload,
+        };
+      }
+      return state;
+    }
     default:
       return state;
   }
@@ -275,11 +288,7 @@ export const CartContext = createContext<CartContextType | undefined>(
 
 export function CartProvider({ children }: { children: ReactNode }) {
   const [cart, dispatch] = useReducer(cartReducer, initCartState);
-  const {
-    convertPrice,
-    convertPriceList,
-    isLoading: isConverting,
-  } = useCurrency();
+  const { convertPrice, isLoading: isConverting } = useCurrency();
 
   useEffect(() => {
     const savedCart = loadCartFromStorage();
@@ -305,6 +314,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const toggleCart = () => {
     dispatch({ type: "TOGGLE_CART" });
+  };
+
+  const setInitialCurrency = (currency: string) => {
+    dispatch({ type: "SET_INITIAL_CURRENCY", payload: currency });
   };
 
   const getCartTotal = () => cart.displayTotal;
@@ -362,7 +375,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // AGGIORNA TASSI DI CAMBIO (DA CHIAMARE PERIODICAMENTE)
+  // AGGIORNA TASSI DI CAMBIO
   const refreshRates = async (): Promise<void> => {
     if (
       cart.items.length === 0 ||
@@ -389,6 +402,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     getDisplayCurrency,
     updateCurrency,
     refreshRates,
+    setInitialCurrency,
   };
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

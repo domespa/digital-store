@@ -13,8 +13,10 @@ export default function UsersOnlinePage() {
       user.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       user.firstName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       user.lastName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.location.country.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.location.city.toLowerCase().includes(searchTerm.toLowerCase())
+      user.location?.country
+        ?.toLowerCase()
+        .includes(searchTerm.toLowerCase()) ||
+      user.location?.city?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const formatTimeAgo = (timestamp: string) => {
@@ -105,7 +107,7 @@ export default function UsersOnlinePage() {
                     {getUserDisplayName(user)}
                   </h3>
                   <p className="text-sm text-gray-600">
-                    📍 {user.location.city}, {user.location.country}
+                    📍 {user.location?.city}, {user.location?.country}
                   </p>
                   <p className="text-sm text-gray-500">🌐 {user.currentPage}</p>
                   <div className="flex items-center space-x-2 mt-2">

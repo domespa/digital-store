@@ -4,13 +4,15 @@ import { catchAsync } from "../utils/catchAsync";
 import { CustomError } from "../utils/customError";
 import { stripe } from "../services/stripe";
 import { paypalService } from "../services/paypal";
-import { sendOrderStatusUpdate } from "../services/emailService";
+import EmailService from "../services/emailService";
+const emailService = new EmailService();
 import { formatOrderResponse } from "../controllers/orderController";
 
 const prisma = new PrismaClient();
 
 export class PaymentController {
-  // POST /api/payments/webhook/stripe - Webhook Stripe
+  // STRIPE
+  // POST /api/payments/webhook/stripe
   static stripeWebhook = catchAsync(async (req: Request, res: Response) => {
     const sig = req.headers["stripe-signature"] as string;
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -68,8 +70,8 @@ export class PaymentController {
       });
     }
   });
-
-  // POST /api/payments/webhook/paypal - Webhook PayPal
+  // PAYPAL
+  // POST /api/payments/webhook/paypal
   static paypalWebhook = catchAsync(async (req: Request, res: Response) => {
     const event = req.body;
 
@@ -102,18 +104,18 @@ export class PaymentController {
       });
     }
   });
-
-  // POST /api/payments/capture/:orderId - Cattura pagamento PayPal
+  // PRENDI PAGAMENTO
+  // POST /api/payments/capture/:orderId
   static capturePayPalPayment = catchAsync(
     async (req: Request, res: Response) => {
       const { orderId } = req.params;
 
-      // Validazione orderId
+      // VALIDAZIONE
       if (!orderId || !/^[a-zA-Z0-9-]+$/.test(orderId)) {
         throw new CustomError("Invalid order ID format", 400);
       }
 
-      // Trova ordine nel database
+      // TROVA ORDINE
       const order = await prisma.order.findUnique({
         where: { id: orderId },
         include: {
@@ -158,13 +160,13 @@ export class PaymentController {
       }
 
       try {
-        // Cattura il pagamento su PayPal
+        // CATTURA PAYPAL
         const captureResult = await paypalService.captureOrder(
           order.paypalOrderId
         );
 
         if (captureResult.status === "COMPLETED") {
-          // Aggiorna ordine nel database
+          // INVIALO AL DB
           const updatedOrder = await prisma.order.update({
             where: { id: orderId },
             data: {
@@ -201,9 +203,9 @@ export class PaymentController {
             req.user?.role === "ADMIN"
           );
 
-          // Invia email di conferma
+          // INVIO EMAIL DI CONFERMA
           try {
-            await sendOrderStatusUpdate(orderResponse, "PENDING");
+            await emailService.sendOrderStatusUpdate(orderResponse, "PENDING");
             console.log(
               `Payment confirmation email sent for order: ${orderId}`
             );
@@ -225,7 +227,7 @@ export class PaymentController {
       } catch (error) {
         console.error("PayPal capture error:", error);
 
-        // Aggiorna ordine come fallito
+        // ORDINE NON ANDATO A BUONFINE
         await prisma.order.update({
           where: { id: orderId },
           data: {
@@ -238,18 +240,17 @@ export class PaymentController {
       }
     }
   );
-
-  // POST /api/payments/refund/:orderId - Rimborso
+  // RIMBORSO
+  // POST /api/payments/refund/:orderId
   static refundPayment = catchAsync(async (req: Request, res: Response) => {
     const { orderId } = req.params;
     const { amount, reason } = req.body;
 
-    // Solo admin possono fare rimborsi
+    // SOLO IO
     if (req.user?.role !== "ADMIN") {
       throw new CustomError("Admin access required", 403);
     }
 
-    // Validazione
     if (!orderId || !/^[a-zA-Z0-9-]+$/.test(orderId)) {
       throw new CustomError("Invalid order ID format", 400);
     }
@@ -299,10 +300,10 @@ export class PaymentController {
       let refundResult;
 
       if (order.stripePaymentIntentId) {
-        // Rimborso Stripe
+        // RIMBORSO VIA STRIPE
         refundResult = await stripe.refunds.create({
           payment_intent: order.stripePaymentIntentId,
-          amount: Math.round(refundAmount * 100), // Stripe vuole centesimi
+          amount: Math.round(refundAmount * 100),
           reason: reason || "requested_by_customer",
           metadata: {
             orderId: order.id,
@@ -323,7 +324,7 @@ export class PaymentController {
         throw new CustomError("No payment method found for refund", 400);
       }
 
-      // Aggiorna ordine nel database
+      // AGGIORNA ORDINE
       const updatedOrder = await prisma.order.update({
         where: { id: orderId },
         data: {
@@ -357,9 +358,9 @@ export class PaymentController {
 
       const orderResponse = formatOrderResponse(updatedOrder, true);
 
-      // Invia email di notifica rimborso
+      // INVIA EMAIL DI RIMBORSO
       try {
-        await sendOrderStatusUpdate(orderResponse, "PAID");
+        await emailService.sendOrderStatusUpdate(orderResponse, "PAID");
         console.log(`Refund notification email sent for order: ${orderId}`);
       } catch (emailError) {
         console.error("Failed to send refund notification email:", emailError);
@@ -377,8 +378,8 @@ export class PaymentController {
       throw new CustomError("Refund processing failed", 500);
     }
   });
-
-  // GET /api/payments/status/:orderId - Stato pagamento
+  // STATO PAGAMENTO
+  // GET /api/payments/status/:orderId
   static getPaymentStatus = catchAsync(async (req: Request, res: Response) => {
     const { orderId } = req.params;
 
@@ -403,8 +404,6 @@ export class PaymentController {
     if (!order) {
       throw new CustomError("Order not found", 404);
     }
-
-    // Verifica autorizzazioni
     const isOwner = req.user && order.userId === req.user.id;
     const isAdmin = req.user && req.user.role === "ADMIN";
 
@@ -527,7 +526,7 @@ export class PaymentController {
     const orderResponse = formatOrderResponse(updatedOrder, true);
 
     try {
-      await sendOrderStatusUpdate(orderResponse, "PENDING");
+      await emailService.sendOrderStatusUpdate(orderResponse, "PENDING");
       console.log(`Payment success email sent for order: ${order.id}`);
     } catch (emailError) {
       console.error("Failed to send payment success email:", emailError);
@@ -663,7 +662,7 @@ export class PaymentController {
     const orderResponse = formatOrderResponse(updatedOrder, true);
 
     try {
-      await sendOrderStatusUpdate(orderResponse, "PENDING");
+      await emailService.sendOrderStatusUpdate(orderResponse, "PENDING");
       console.log(`PayPal payment success email sent for order: ${order.id}`);
     } catch (emailError) {
       console.error("Failed to send PayPal payment success email:", emailError);

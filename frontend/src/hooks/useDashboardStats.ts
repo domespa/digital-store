@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { adminDashboard, adminWebSocket } from "../services/adminApi";
+import { adminDashboard } from "../services/adminApi";
 import type { DashboardStats } from "../types/admin";
 
 export function useDashboardStats() {
@@ -22,19 +22,11 @@ export function useDashboardStats() {
 
     fetchStats();
 
-    // UPDATE 30 SEC
+    // UPDATE 3 MIN
     const interval = setInterval(fetchStats, 30000);
-
-    // WEBSOCKET
-    const ws = adminWebSocket.connect((data) => {
-      if (data.type === "stats_update") {
-        setStats((prev) => (prev ? { ...prev, ...data.stats } : null));
-      }
-    });
 
     return () => {
       clearInterval(interval);
-      ws.close();
     };
   }, []);
 

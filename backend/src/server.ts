@@ -32,7 +32,7 @@ import reviewRoutes from "./routes/review";
 import wishlistRoutes from "./routes/wishlist";
 import searchRoutes from "./routes/search";
 import analyticsRoutes from "./routes/analytics";
-import { createNotificationRoutes } from "./routes/notification";
+import { createNotificationRoutesFlexible } from "./routes/notification";
 import recommendationRoutes from "./routes/recommendation";
 
 // IMPORT SUPPORT SYSTEM
@@ -40,6 +40,7 @@ import { setupSupportRoutes } from "./routes/support";
 import NotificationService from "./services/notificationService";
 import EmailService from "./services/emailService";
 import WebSocketService from "./services/websocketService";
+import LocationTrackingWebSocket from "./services/locationTrackingWebSocket";
 import { FileUploadService } from "./services/uploadService";
 
 // IMPORT CURRENCY
@@ -47,6 +48,8 @@ import currencyRoutes from "./routes/currency";
 
 // CARICHIAMO LE VARIABILI DI AMBIENTE
 dotenv.config();
+
+console.log("DATABASE_URL at runtime:", process.env.DATABASE_URL);
 
 // INIT PRISMA
 const prisma = new PrismaClient();
@@ -66,6 +69,27 @@ const notificationService = new NotificationService(
   websocketService,
   emailService
 );
+
+const locationTrackingService = new LocationTrackingWebSocket(
+  httpServer,
+  "/location"
+);
+
+// ========================
+// GLOBAL SERVICE ASSIGNMENT
+// ========================
+
+declare global {
+  namespace NodeJS {
+    interface Global {
+      webSocketService: WebSocketService;
+      locationTrackingService: LocationTrackingWebSocket;
+    }
+  }
+}
+
+(globalThis as any).webSocketService = websocketService;
+(globalThis as any).locationTrackingService = locationTrackingService;
 
 //=====================================================
 // ==================== MIDDLEWARE ====================
@@ -157,7 +181,10 @@ app.use("/api/search", searchRoutes);
 // =============== NOTIFICHE (WEBSOCKET) ==============
 //=====================================================
 
-const notificationRoutes = createNotificationRoutes(httpServer);
+const notificationRoutes = createNotificationRoutesFlexible(
+  httpServer,
+  websocketService
+);
 app.use("/api/notifications", notificationRoutes);
 
 //=====================================================
@@ -605,6 +632,11 @@ process.on("SIGINT", async () => {
     if (websocketService) {
       await websocketService.cleanup();
       console.log("✅ WebSocket service cleaned up");
+    }
+
+    if (locationTrackingService) {
+      locationTrackingService.cleanup();
+      console.log("✅ Location tracking service cleaned up");
     }
 
     await prisma.$disconnect();

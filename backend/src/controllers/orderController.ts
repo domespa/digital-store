@@ -244,7 +244,7 @@ export const getOrdersAdmin = catchAsync(
   }
 );
 
-// CREAZIONE ORDINE (SEMPLIFICATO - senza logica pagamenti)
+// CREAZIONE ORDINE
 // POST /api/orders
 export const createOrder = catchAsync(async (req: Request, res: Response) => {
   const {
@@ -296,6 +296,18 @@ export const createOrder = catchAsync(async (req: Request, res: Response) => {
     where: { id: { in: productIds }, isActive: true },
   });
 
+  console.log("🔍 PRODUCTS DEBUG:", {
+    requestedProductIds: productIds,
+    foundProducts: products.map((p) => ({
+      id: p.id,
+      name: p.name,
+      price: p.price.toNumber(),
+      isActive: p.isActive,
+    })),
+    foundCount: products.length,
+    requestedCount: productIds.length,
+  });
+
   if (products.length !== productIds.length) {
     const foundIds = products.map((p) => p.id);
     const missingIds = productIds.filter((id) => !foundIds.includes(id));
@@ -308,7 +320,16 @@ export const createOrder = catchAsync(async (req: Request, res: Response) => {
 
   for (const item of items) {
     const product = products.find((p) => p.id === item.productId)!;
-    const lineTotal = product.price.toNumber() * item.quantity;
+    const productPrice = product.price.toNumber();
+    const lineTotal = productPrice * item.quantity;
+
+    console.log("💰 LINE CALC:", {
+      productId: item.productId,
+      productName: product.name,
+      productPrice: productPrice,
+      quantity: item.quantity,
+      lineTotal: lineTotal,
+    });
     subtotal += lineTotal;
 
     orderItemsData.push({
@@ -618,7 +639,7 @@ export const getOrderById = catchAsync(async (req: Request, res: Response) => {
   } as OrderDetailResponse);
 });
 
-// AGGIORNA STATUS ORDINE - ADMIN (INVARIATO)
+// AGGIORNA STATUS ORDINE
 // PUT /api/admin/orders/:id/status
 export const updateOrderStatus = catchAsync(
   async (req: Request, res: Response) => {

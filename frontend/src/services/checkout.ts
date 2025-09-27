@@ -10,7 +10,7 @@ const getAuthToken = (): string | null => {
 export const createCheckoutOrder = async (
   checkoutData: CheckoutRequest
 ): Promise<CheckoutResponse> => {
-  const token = getAuthToken;
+  const token = getAuthToken();
 
   const headers: HeadersInit = {
     "Content-Type": "application/json",

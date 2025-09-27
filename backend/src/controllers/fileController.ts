@@ -23,7 +23,8 @@ export class FileController {
       throw new CustomError("Invalid folder name", 400);
     }
 
-    const imageSizes = await FileUploadService.uploadImage(
+    const uploadService = new FileUploadService();
+    const imageSizes = await uploadService.uploadImage(
       req.file.path,
       req.file.originalname,
       sanitizedFolder,
@@ -43,7 +44,8 @@ export class FileController {
     });
   });
 
-  // POST /api/files/upload/product-gallery/:productId - Upload galleria prodotto
+  // UPLOAD GALLERIA PRODOTTO
+  // POST /api/files/upload/product-gallery/:productId
   static uploadProductGallery = catchAsync(
     async (req: Request, res: Response) => {
       const { productId } = req.params;
@@ -52,7 +54,6 @@ export class FileController {
         throw new CustomError("No files provided", 400);
       }
 
-      // Validazione productId format
       if (
         !productId ||
         productId.length > 36 ||
@@ -61,7 +62,6 @@ export class FileController {
         throw new CustomError("Invalid product ID format", 400);
       }
 
-      // Verifica che il prodotto esista
       const product = await prisma.product.findUnique({
         where: { id: productId },
       });
@@ -70,32 +70,29 @@ export class FileController {
         throw new CustomError("Product not found", 404);
       }
 
-      // Verifica permessi (solo admin)
       if (req.user?.role !== "ADMIN") {
         throw new CustomError("Admin access required", 403);
       }
 
-      // Limite massimo immagini per prodotto
       const existingImagesCount = await prisma.productImage.count({
         where: { productId },
       });
 
       const totalAfterUpload = existingImagesCount + req.files.length;
       if (totalAfterUpload > 10) {
-        // Max 10 immagini per prodotto
         throw new CustomError(
           `Maximum 10 images per product. Current: ${existingImagesCount}, trying to add: ${req.files.length}`,
           400
         );
       }
 
-      await FileUploadService.uploadProductGallery(
+      const uploadService = new FileUploadService();
+      await uploadService.uploadProductGallery(
         req.files,
         productId,
         req.user?.id
       );
 
-      // Ottieni le immagini caricate (con retry per race condition)
       let productImages = await prisma.productImage.findMany({
         where: { productId },
         orderBy: { sortOrder: "asc" },
@@ -106,7 +103,6 @@ export class FileController {
           break;
         }
 
-        // Breve attesa per permettere al database di aggiornarsi
         await new Promise((resolve) => setTimeout(resolve, 100));
 
         productImages = await prisma.productImage.findMany({
@@ -126,8 +122,8 @@ export class FileController {
       });
     }
   );
-
-  // POST /api/files/upload/digital - Upload file digitale
+  // UPLOAD FILE DIGITALE
+  // POST /api/files/upload/digital
   static uploadDigitalFile = catchAsync(async (req: Request, res: Response) => {
     if (!req.file) {
       throw new CustomError("No file provided", 400);
@@ -137,13 +133,13 @@ export class FileController {
       throw new CustomError("Admin access required", 403);
     }
 
-    // Validazione folder
     const folder = req.body.folder || "digital-products";
     const sanitizedFolder = folder
       .replace(/[^a-zA-Z0-9-_]/g, "")
       .substring(0, 50);
 
-    const result = await FileUploadService.uploadDigitalFile(
+    const uploadService = new FileUploadService();
+    const result = await uploadService.uploadImage(
       req.file.path,
       req.file.originalname,
       sanitizedFolder,
@@ -157,17 +153,16 @@ export class FileController {
     });
   });
 
-  // GET /api/files/download/:fileId - Download protetto
+  // DOWN PROTETTO
+  // GET /api/files/download/:fileId
   static downloadFile = catchAsync(async (req: Request, res: Response) => {
     const { fileId } = req.params;
     const { userId, expires, signature } = req.query;
 
-    // Validazione parametri più rigorosa
     if (!userId || !expires || !signature) {
       throw new CustomError("Invalid download parameters", 400);
     }
 
-    // Validazione formato parametri
     if (
       typeof userId !== "string" ||
       typeof expires !== "string" ||
@@ -186,7 +181,6 @@ export class FileController {
       throw new CustomError("Invalid expiration timestamp", 400);
     }
 
-    // Verifica firma e scadenza
     const isValid = FileUploadService.verifyDownloadSignature(
       fileId,
       userId,
@@ -209,7 +203,7 @@ export class FileController {
       throw new CustomError("File not found", 404);
     }
 
-    // Verifica che l'utente abbia acquistato il prodotto
+    // HA ACQUISTATO?
     const order = await prisma.order.findFirst({
       where: {
         userId: userId,
@@ -227,20 +221,18 @@ export class FileController {
       throw new CustomError("Access denied - purchase required", 403);
     }
 
-    // Incrementa contatore download
+    // AGGIORNA DATI CONTANTOTE
     await prisma.product.update({
       where: { id: product.id },
       data: { downloadCount: { increment: 1 } },
     });
 
-    // Log del download con più dettagli
     console.log(
       `File downloaded: ${fileId} by user ${userId} from order ${
         order.id
       } at ${new Date().toISOString()}`
     );
 
-    // Redirect al file su Cloudinary
     if (product.filePath) {
       res.redirect(product.filePath);
     } else {
@@ -248,7 +240,8 @@ export class FileController {
     }
   });
 
-  // GET /api/files/download-link/:productId - Genera link download
+  // GENERA LINK
+  // GET /api/files/download-link/:productId
   static generateDownloadLink = catchAsync(
     async (req: Request, res: Response) => {
       const { productId } = req.params;
@@ -257,7 +250,6 @@ export class FileController {
         throw new CustomError("Authentication required", 401);
       }
 
-      // Validazione productId
       if (!productId || !/^[a-zA-Z0-9-]+$/.test(productId)) {
         throw new CustomError("Invalid product ID format", 400);
       }
@@ -270,13 +262,12 @@ export class FileController {
         throw new CustomError("Product or file not found", 404);
       }
 
-      // Verifica acquisto con più controlli
       const order = await prisma.order.findFirst({
         where: {
           userId: req.user.id,
           status: "COMPLETED",
           paymentStatus: "SUCCEEDED",
-          // Ordine non più vecchio di 2 anni
+
           createdAt: {
             gte: new Date(Date.now() - 2 * 365 * 24 * 60 * 60 * 1000),
           },
@@ -308,8 +299,8 @@ export class FileController {
       });
     }
   );
-
-  // DELETE /api/files/image/:imageId - Elimina immagine prodotto
+  // ELIMINA IMMAGINE
+  // DELETE /api/files/image/:imageId
   static deleteProductImage = catchAsync(
     async (req: Request, res: Response) => {
       const { imageId } = req.params;
@@ -330,12 +321,10 @@ export class FileController {
         throw new CustomError("Image not found", 404);
       }
 
-      // Verifica permessi (solo admin)
       if (req.user?.role !== "ADMIN") {
         throw new CustomError("Admin access required", 403);
       }
 
-      // Elimina da Cloudinary
       try {
         const publicId = FileUploadService.extractPublicIdFromUrl(image.url);
         if (publicId) {
@@ -344,10 +333,8 @@ export class FileController {
         }
       } catch (error) {
         console.error("Failed to delete from Cloudinary:", error);
-        // Continue with database deletion even if Cloudinary fails
       }
 
-      // Se era l'immagine principale, imposta la prossima come principale
       if (image.isMain) {
         const nextImage = await prisma.productImage.findFirst({
           where: {
@@ -365,7 +352,6 @@ export class FileController {
         }
       }
 
-      // Elimina dal database
       await prisma.productImage.delete({
         where: { id: imageId },
       });
@@ -381,16 +367,15 @@ export class FileController {
     }
   );
 
-  // GET /api/files/product/:productId/images - Ottieni immagini prodotto
+  // IMMAGINI
+  // GET /api/files/product/:productId/images
   static getProductImages = catchAsync(async (req: Request, res: Response) => {
     const { productId } = req.params;
 
-    // Validazione productId
     if (!productId || !/^[a-zA-Z0-9-]+$/.test(productId)) {
       throw new CustomError("Invalid product ID format", 400);
     }
 
-    // Verifica esistenza prodotto
     const product = await prisma.product.findUnique({
       where: { id: productId },
     });
@@ -422,13 +407,13 @@ export class FileController {
     });
   });
 
-  // PUT /api/files/product/:productId/images/reorder - Riordina immagini
+  // ORDINAMENTO
+  // PUT /api/files/product/:productId/images/reorder
   static reorderProductImages = catchAsync(
     async (req: Request, res: Response) => {
       const { productId } = req.params;
       const { imageOrders } = req.body;
 
-      // Validazioni
       if (!productId || !/^[a-zA-Z0-9-]+$/.test(productId)) {
         throw new CustomError("Invalid product ID format", 400);
       }
@@ -437,7 +422,6 @@ export class FileController {
         throw new CustomError("imageOrders must be a non-empty array", 400);
       }
 
-      // Verifica prodotto e permessi
       const product = await prisma.product.findUnique({
         where: { id: productId },
       });
@@ -450,7 +434,6 @@ export class FileController {
         throw new CustomError("Admin access required", 403);
       }
 
-      // Validazione formato array dettagliata
       const isValidFormat = imageOrders.every((item, index) => {
         if (
           typeof item.imageId !== "string" ||
@@ -471,7 +454,6 @@ export class FileController {
         );
       }
 
-      // Verifica che tutte le immagini appartengano al prodotto
       const imageIds = imageOrders.map((item) => item.imageId);
       const existingImages = await prisma.productImage.findMany({
         where: {
@@ -484,7 +466,6 @@ export class FileController {
         throw new CustomError("Some images do not belong to this product", 400);
       }
 
-      // Aggiorna ordine in transazione
       await prisma.$transaction(async (prismaTransaction) => {
         const updatePromises = imageOrders.map(
           ({ imageId, sortOrder, isMain }) =>
@@ -516,8 +497,8 @@ export class FileController {
       });
     }
   );
-
-  // GET /api/files/stats - Statistiche storage (Admin)
+  // ADMIN STATS SPAZIO
+  // GET /api/files/stats
   static getStorageStats = catchAsync(async (req: Request, res: Response) => {
     if (req.user?.role !== "ADMIN") {
       throw new CustomError("Admin access required", 403);
@@ -525,13 +506,12 @@ export class FileController {
 
     const stats = await FileUploadService.getStorageStats();
 
-    // Statistiche aggiuntive dal database
     const [totalUploads, recentUploads] = await Promise.all([
       prisma.productImage.count(),
       prisma.productImage.count({
         where: {
           createdAt: {
-            gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // Ultimi 30 giorni
+            gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
           },
         },
       }),
@@ -548,7 +528,7 @@ export class FileController {
     });
   });
 
-  // POST /api/files/cleanup - Cleanup file orfani (Admin)
+  // POST /api/files/cleanup
   static cleanupOrphanFiles = catchAsync(
     async (req: Request, res: Response) => {
       if (req.user?.role !== "ADMIN") {
@@ -565,7 +545,8 @@ export class FileController {
     }
   );
 
-  // PUT /api/files/image/:imageId/main - Imposta immagine come principale
+  // IMPOSTA IMMAGINE PRINCIPALE PRODOTT
+  // PUT /api/files/image/:imageId/main
   static setMainImage = catchAsync(async (req: Request, res: Response) => {
     const { imageId } = req.params;
 
@@ -584,12 +565,10 @@ export class FileController {
       throw new CustomError("Image not found", 404);
     }
 
-    // Verifica permessi (solo admin)
     if (req.user?.role !== "ADMIN") {
       throw new CustomError("Admin access required", 403);
     }
 
-    // Se già principale, non fare nulla
     if (image.isMain) {
       return res.json({
         success: true,
@@ -598,7 +577,6 @@ export class FileController {
       });
     }
 
-    // Transazione per impostare una sola immagine principale per prodotto
     await prisma.$transaction([
       prisma.productImage.updateMany({
         where: { productId: image.productId },
@@ -617,7 +595,8 @@ export class FileController {
     });
   });
 
-  // GET /api/files/health - Health check per Cloudinary
+  // STATUS CLOUDINARY
+  // GET /api/files/health
   static healthCheck = catchAsync(async (req: Request, res: Response) => {
     try {
       const ping = await cloudinary.api.ping();

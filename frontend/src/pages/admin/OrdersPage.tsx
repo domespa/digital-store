@@ -30,16 +30,14 @@ export default function OrdersPage() {
     switch (status) {
       case "PENDING":
         return "warning";
-      case "CONFIRMED":
+      case "PAID":
         return "info";
-      case "PROCESSING":
-        return "info";
-      case "SHIPPED":
-        return "info";
-      case "DELIVERED":
+      case "COMPLETED":
         return "success";
-      case "CANCELLED":
+      case "FAILED":
         return "danger";
+      case "REFUNDED":
+        return "info";
       default:
         return "default";
     }
@@ -49,7 +47,7 @@ export default function OrdersPage() {
     switch (status) {
       case "PENDING":
         return "warning";
-      case "PAID":
+      case "SUCCEEDED":
         return "success";
       case "FAILED":
         return "danger";
@@ -155,12 +153,12 @@ export default function OrdersPage() {
               <div className="flex items-center justify-between mb-4">
                 <div className="flex space-x-2">
                   <Badge variant={getStatusBadgeVariant(order.status)}>
-                    {order.status}
+                    Status: {order.status}
                   </Badge>
                   <Badge
                     variant={getPaymentStatusBadgeVariant(order.paymentStatus)}
                   >
-                    {order.paymentStatus}
+                    Payment: {order.paymentStatus}
                   </Badge>
                 </div>
                 <div className="text-sm text-gray-500">

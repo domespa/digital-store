@@ -1,4 +1,3 @@
-import React from "react";
 import { Card } from "../../components/ui/Card";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
@@ -6,7 +5,7 @@ import { Select } from "../../components/ui/Select";
 import { Input } from "../../components/ui/Input";
 import { useOrderDetail } from "../../hooks/useOrderDetail";
 import { useApp } from "../../context/AppContext";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { UpdateOrderStatusRequest } from "../../types/admin";
 
 export default function OrderDetailPage() {
@@ -20,7 +19,7 @@ export default function OrderDetailPage() {
     paymentStatus: order?.paymentStatus || "",
   });
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (order) {
       setFormData({
         status: order.status,
@@ -50,16 +49,14 @@ export default function OrderDetailPage() {
     switch (status) {
       case "PENDING":
         return "warning";
-      case "CONFIRMED":
+      case "PAID":
         return "info";
-      case "PROCESSING":
-        return "info";
-      case "SHIPPED":
-        return "info";
-      case "DELIVERED":
+      case "COMPLETED":
         return "success";
-      case "CANCELLED":
+      case "FAILED":
         return "danger";
+      case "REFUNDED":
+        return "info";
       default:
         return "default";
     }
@@ -69,7 +66,7 @@ export default function OrderDetailPage() {
     switch (status) {
       case "PENDING":
         return "warning";
-      case "PAID":
+      case "SUCCEEDED":
         return "success";
       case "FAILED":
         return "danger";
@@ -113,16 +110,15 @@ export default function OrderDetailPage() {
 
   const statusOptions = [
     { value: "PENDING", label: "Pending" },
-    { value: "CONFIRMED", label: "Confirmed" },
-    { value: "PROCESSING", label: "Processing" },
-    { value: "SHIPPED", label: "Shipped" },
-    { value: "DELIVERED", label: "Delivered" },
-    { value: "CANCELLED", label: "Cancelled" },
+    { value: "PAID", label: "Paid" },
+    { value: "COMPLETED", label: "Completed" },
+    { value: "FAILED", label: "Failed" },
+    { value: "REFUNDED", label: "Refunded" },
   ];
 
   const paymentStatusOptions = [
     { value: "PENDING", label: "Pending" },
-    { value: "PAID", label: "Paid" },
+    { value: "SUCCEEDED", label: "Succeeded" },
     { value: "FAILED", label: "Failed" },
     { value: "REFUNDED", label: "Refunded" },
   ];
@@ -193,10 +189,10 @@ export default function OrderDetailPage() {
         </div>
         <div className="flex gap-2">
           <Badge variant={getStatusBadgeVariant(order.status)}>
-            {order.status}
+            Status: {order.status}
           </Badge>
           <Badge variant={getPaymentStatusBadgeVariant(order.paymentStatus)}>
-            {order.paymentStatus}
+            Payment: {order.paymentStatus}
           </Badge>
         </div>
       </div>

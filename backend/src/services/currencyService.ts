@@ -187,7 +187,7 @@ export class CurrencyService {
     }
   }
 
-  // API FIXER.IO (RICHIEDE API KEY)
+  // API FIXER.IO
   private async fetchFromFixer(
     baseCurrency: string
   ): Promise<ExchangeRates | null> {
@@ -211,7 +211,7 @@ export class CurrencyService {
     return null;
   }
 
-  // API CURRENCYAPI.COM (RICHIEDE API KEY)
+  // API CURRENCYAPI.COM
   private async fetchFromCurrencyAPI(
     baseCurrency: string
   ): Promise<ExchangeRates | null> {
@@ -268,7 +268,7 @@ export class CurrencyService {
       };
     }
 
-    // PROVA API REAL-TIME
+    // API REAL-TIME
     const apiRates = await this.fetchExchangeRates(fromCurrency);
 
     if (apiRates && apiRates.rates[toCurrency]) {

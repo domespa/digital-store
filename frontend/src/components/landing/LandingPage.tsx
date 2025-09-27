@@ -12,8 +12,32 @@ import FaqSect from "./sections/FaqSect";
 import PricingSect from "./sections/PricingSect";
 import CartSlideBar from "../cart/CartSlideBar";
 import CartIcon from "../cart/CartIcon";
+import { useEffect } from "react";
+import { useLandingContext } from "../../context/LandingContext";
+import { useCart } from "../../hooks/useCart";
 
 const LandingPageContent = () => {
+  const { user, isLoading } = useLandingContext();
+  const { setInitialCurrency } = useCart();
+
+  useEffect(() => {
+    if (user?.currency && !isLoading) {
+      console.log("🌍 IMPOSTANDO VALUTA CARRELLO:", user.currency);
+      setInitialCurrency(user.currency);
+    }
+  }, [user?.currency, isLoading, setInitialCurrency]);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Rilevamento posizione...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="landing-page">
       <HeroSect />

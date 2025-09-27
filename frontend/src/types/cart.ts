@@ -41,6 +41,7 @@ export interface CartContextType {
   getCartTotal: () => number;
   getItemsCount: () => number;
   getDisplayCurrency: () => string;
+  setInitialCurrency: (currency: string) => void;
 
   // CONVERTO VALUTA
   updateCurrency: (newCurrency: string) => Promise<void>;

@@ -6,9 +6,6 @@ import type {
   CheckoutRequest,
   CheckoutForm,
   CheckoutResult,
-  CheckoutData,
-  OrderResponse,
-  PaymentProvider,
 } from "../types/checkout";
 
 export const useCheckout = () => {
@@ -54,11 +51,29 @@ export const useCheckout = () => {
         currency: getDisplayCurrency(),
       };
 
-      console.log("CREATING CHECKOUT", checkoutData);
+      console.log("🛒 SENDING TO BACKEND:", checkoutData);
+      console.log("🛒 CART TOTAL FRONTEND:", getCartTotal());
+
+      console.log("🛒 SENDING CHECKOUT:", {
+        checkoutData,
+        cartItems: cart.items.map((item) => ({
+          id: item.id,
+          name: item.name,
+          productId: item.productId,
+          displayPrice: item.displayPrice,
+          quantity: item.quantity,
+        })),
+        cartTotal: getCartTotal(),
+      });
 
       const response = await createCheckoutOrder(checkoutData);
 
-      console.log(" CHECKOUT API", response);
+      console.log("📨 BACKEND RESPONSE:", {
+        fullResponse: response,
+        orderTotal: response.order?.total,
+        displayTotal: response.displayTotal,
+        orderItems: response.order?.orderItems,
+      });
 
       if (response.paymentProvider === "STRIPE" && response.clientSecret) {
         return {

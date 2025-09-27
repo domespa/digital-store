@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { adminApi } from "../services/adminApi";
+import type { Socket } from "socket.io-client";
 
 type AdminPage =
   | "dashboard"
@@ -18,6 +19,12 @@ interface AdminLayoutProps {
   onNavigate: (page: AdminPage) => void;
 }
 
+interface WebSocketMessage {
+  type: "user_count" | "notification" | "unread_count" | "system";
+  count?: number;
+  data?: unknown;
+}
+
 export default function AdminLayout({
   children,
   currentPage,
@@ -27,16 +34,40 @@ export default function AdminLayout({
   const [notifications, setNotifications] = useState(0);
 
   useEffect(() => {
-    const ws = adminApi.connectWebSocket((data) => {
-      if (data.type === "user_count") {
-        setOnlineUsers(data.count);
-      }
-      if (data.type === "notification") {
-        setNotifications((prev) => prev + 1);
-      }
-    });
+    let socket: Socket | null = null;
 
-    return () => ws.close();
+    try {
+      socket = adminApi.connectWebSocket((data: WebSocketMessage) => {
+        switch (data.type) {
+          case "user_count":
+            if (typeof data.count === "number") {
+              setOnlineUsers(data.count);
+            }
+            break;
+          case "notification":
+            setNotifications((prev: number) => prev + 1);
+            break;
+          case "unread_count":
+            if (typeof data.count === "number") {
+              setNotifications(data.count);
+            }
+            break;
+          case "system":
+            console.log("System notification:", data);
+            break;
+          default:
+            console.log("Unknown WebSocket message:", data);
+        }
+      });
+    } catch (error: unknown) {
+      console.error("Failed to connect WebSocket:", error);
+    }
+
+    return () => {
+      if (socket) {
+        socket.disconnect();
+      }
+    };
   }, []);
 
   const navigation: Array<{ name: string; href: AdminPage; icon: string }> = [
@@ -56,7 +87,7 @@ export default function AdminLayout({
       <div className="fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-lg">
         {/* LOGO */}
         <div className="flex h-16 items-center justify-center border-b border-gray-200">
-          <h1 className="text-xl font-bold text-gray-900">Admin Dashboard</h1>
+          <h1 className="text-xl font-bold text-gray-900">Admin Panel</h1>
         </div>
 
         {/* NAV */}
@@ -92,9 +123,6 @@ export default function AdminLayout({
           <div className="flex items-center">
             <div className="w-3 h-3 bg-green-500 rounded-full mr-2 animate-pulse"></div>
             <span className="text-sm text-gray-600">System Online</span>
-          </div>
-          <div className="text-xs text-gray-500 mt-1">
-            {onlineUsers} users connected
           </div>
         </div>
       </div>

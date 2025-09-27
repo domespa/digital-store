@@ -8,193 +8,148 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ==========================================
-//                  USERS          
-// ==========================================
 model User {
-  id              String    @id @default(cuid())
-  email           String    @unique
-  password        String
-  firstName       String
-  lastName        String
-  role            UserRole  @default(USER)
-  emailVerified   Boolean   @default(false)
-  lastLoginAt     DateTime?
-  loginAttempts   Int       @default(0)
-  lockedUntil     DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  source          String? 
-  lastActivity    DateTime? 
-
-  // RELAZIONI PRODOTTI
-  createdProducts Product[] @relation("ProductCreator")
-
-  // RELAZIONI ORDINI
-  orders Order[]
-
-  // RELAZIONI AUTENTICAZIONE
-  passwordResetTokens     PasswordResetToken[]
+  id                      String                   @id @default(cuid())
+  email                   String                   @unique
+  password                String
+  firstName               String
+  lastName                String
+  role                    UserRole                 @default(USER)
+  emailVerified           Boolean                  @default(false)
+  lastLoginAt             DateTime?
+  loginAttempts           Int                      @default(0)
+  lockedUntil             DateTime?
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+  lastActivity            DateTime?
+  source                  String?
   emailVerificationTokens EmailVerificationToken[]
-
-  // RELAZIONI REVIEW
-  reviews             Review[]
-  reviewHelpfulVotes  ReviewHelpfulVote[]
-  reviewReports       ReviewReport[]
-  handledReports      ReviewReport[]       @relation("ReportHandler")
-  moderationActions   ReviewModerationLog[] @relation("ReviewModerator")
-
-  // RELAZIONI WISHLIST
-  wishlists Wishlist[]
-
-  // RELAZIONI NOTIFICHE
-  notifications           Notification[]
   notificationPreferences NotificationPreference?
+  notifications           Notification[]
+  orders                  Order[]
+  passwordResetTokens     PasswordResetToken[]
+  createdProducts         Product[]                @relation("ProductCreator")
+  reviewHelpfulVotes      ReviewHelpfulVote[]
+  moderationActions       ReviewModerationLog[]    @relation("ReviewModerator")
+  handledReports          ReviewReport[]           @relation("ReportHandler")
+  reviewReports           ReviewReport[]
+  reviews                 Review[]
+  supportAgent            SupportAgent?            @relation("SupportAgent")
+  supportAttachments      SupportAttachment[]      @relation("SupportAttachments")
+  readMessages            SupportMessageRead[]     @relation("ReadMessages")
+  supportMessages         SupportMessage[]         @relation("SupportMessages")
+  assignedTickets         SupportTicket[]          @relation("AssignedTickets")
+  supportTickets          SupportTicket[]          @relation("UserTickets")
+  vendorTickets           SupportTicket[]          @relation("VendorTickets")
   websocketConnections    WebSocketConnection[]
-
-  // RELAZIONI SUPPORTO
-  supportTickets     SupportTicket[]       @relation("UserTickets")
-  assignedTickets    SupportTicket[]       @relation("AssignedTickets") 
-  vendorTickets      SupportTicket[]       @relation("VendorTickets")
-  supportMessages    SupportMessage[]      @relation("SupportMessages")
-  readMessages       SupportMessageRead[]  @relation("ReadMessages")
-  supportAttachments SupportAttachment[]   @relation("SupportAttachments")
-  supportAgent       SupportAgent?         @relation("SupportAgent")
+  wishlists               Wishlist[]
 
   @@map("users")
 }
 
-// ==========================================
-//   PRODOTTI, CATEGORIE E LISTA PREFERITI 
-// ==========================================
-
 model Product {
-  id               String   @id @default(cuid())
-  name             String
-  slug             String   @unique 
-  description      String?
-  shortDescription String?
-  price            Decimal  @db.Decimal(10, 2)
-  originalPrice    Decimal? @db.Decimal(10, 2)
-  fileName         String?
-  filePath         String?
-  
-  // TIMESTAMPS
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  publishedAt DateTime?
-
-  // INVENTORY
-  stock             Int     @default(0) 
-  lowStockThreshold Int     @default(5) 
-  trackInventory    Boolean @default(false) 
-  allowBackorder    Boolean @default(false) 
-
-  // METRICS
-  viewCount         Int     @default(0) 
-  downloadCount     Int     @default(0) 
-  rating            Decimal @default(0) @db.Decimal(3, 2) 
-  averageRating     Float   @default(0)
-  reviewCount       Int     @default(0) 
+  id                 String           @id @default(cuid())
+  name               String
+  slug               String           @unique
+  description        String?
+  shortDescription   String?
+  price              Decimal          @db.Decimal(10, 2)
+  originalPrice      Decimal?         @db.Decimal(10, 2)
+  fileName           String?
+  filePath           String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  publishedAt        DateTime?
+  stock              Int              @default(0)
+  lowStockThreshold  Int              @default(5)
+  trackInventory     Boolean          @default(false)
+  allowBackorder     Boolean          @default(false)
+  viewCount          Int              @default(0)
+  downloadCount      Int              @default(0)
+  rating             Decimal          @default(0) @db.Decimal(3, 2)
+  reviewCount        Int              @default(0)
+  isActive           Boolean          @default(true)
+  isFeatured         Boolean          @default(false)
+  isDigital          Boolean          @default(true)
+  seoTitle           String?
+  seoDescription     String?
+  createdBy          String?
+  categoryId         String?
+  averageRating      Float            @default(0)
   ratingDistribution Json?
-  wishlistCount     Int     @default(0)
-
-  // FLAGS
-  isActive   Boolean @default(true)
-  isFeatured Boolean @default(false) 
-  isDigital  Boolean @default(true) 
-
-  // SEO
-  seoTitle       String? 
-  seoDescription String? 
-
-  // CREATOR
-  createdBy String? 
-  creator   User?   @relation("ProductCreator", fields: [createdBy], references: [id])
-
-  // RELAZIONI
-  orderItems      OrderItem[]
-  categoryId      String?
-  category        Category?         @relation(fields: [categoryId], references: [id])
-  variants        ProductVariant[]
-  images          ProductImage[]
-  tags            Tag[]
-  reviews         Review[] 
-  wishlists       Wishlist[]
-  notifications   Notification[]
-  supportTickets  SupportTicket[]
+  wishlistCount      Int              @default(0)
+  notifications      Notification[]
+  orderItems         OrderItem[]
+  images             ProductImage[]
+  variants           ProductVariant[]
+  category           Category?        @relation(fields: [categoryId], references: [id])
+  creator            User?            @relation("ProductCreator", fields: [createdBy], references: [id])
+  reviews            Review[]
+  supportTickets     SupportTicket[]
+  wishlists          Wishlist[]
+  tags               Tag[]            @relation("ProductToTag")
 
   @@map("products")
 }
 
 model Category {
-  id          String    @id @default(cuid())
-  name        String    @unique
-  slug        String    @unique
-  description String?
-  parentId    String? 
-  parent      Category? @relation("CategoryHierarchy", fields: [parentId], references: [id])
-  children    Category[] @relation("CategoryHierarchy")
-  isActive    Boolean   @default(true)
-  sortOrder   Int       @default(0) 
-  
-  // SEO
+  id             String     @id @default(cuid())
+  name           String     @unique
+  slug           String     @unique
+  description    String?
+  parentId       String?
+  isActive       Boolean    @default(true)
+  sortOrder      Int        @default(0)
   seoTitle       String?
   seoDescription String?
-  
-  // TIMESTAMPS
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // RELAZIONI
-  products Product[]
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  parent         Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children       Category[] @relation("CategoryHierarchy")
+  products       Product[]
 
   @@map("categories")
 }
 
 model ProductVariant {
-  id            String   @id @default(cuid())
+  id            String      @id @default(cuid())
   productId     String
-  product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  name          String 
-  price         Decimal  @db.Decimal(10, 2)
-  originalPrice Decimal? @db.Decimal(10, 2) 
+  name          String
+  price         Decimal     @db.Decimal(10, 2)
+  originalPrice Decimal?    @db.Decimal(10, 2)
   fileName      String
   filePath      String
-  downloadCount Int      @default(0)
-  maxDownloads  Int? 
-  isActive      Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  // RELAZIONI
-  orderItems OrderItem[]
+  downloadCount Int         @default(0)
+  maxDownloads  Int?
+  isActive      Boolean     @default(true)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  orderItems    OrderItem[]
+  product       Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@map("product_variants")
 }
 
 model Tag {
-  id        String   @id @default(cuid())
-  name      String   @unique
-  slug      String   @unique
-  color     String? 
-  createdAt DateTime @default(now())
-  
-  // RELAZIONI
-  products Product[]
+  id        String    @id @default(cuid())
+  name      String    @unique
+  slug      String    @unique
+  color     String?
+  createdAt DateTime  @default(now())
+  products  Product[] @relation("ProductToTag")
 
   @@map("tags")
 }
 
 model ProductImage {
-  id        String  @id @default(cuid())
+  id        String   @id @default(cuid())
   productId String
-  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
   url       String
   altText   String?
-  sortOrder Int     @default(0)
-  isMain    Boolean @default(false)
+  sortOrder Int      @default(0)
+  isMain    Boolean  @default(false)
   createdAt DateTime @default(now())
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@map("product_images")
 }
@@ -202,11 +157,11 @@ model ProductImage {
 model Wishlist {
   id        String   @id @default(cuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   productId String
-  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, productId], name: "unique_user_product_wishlist")
   @@index([userId])
@@ -214,38 +169,31 @@ model Wishlist {
   @@map("wishlists")
 }
 
-// ==========================================
-//        REVIEW VARIE ED EVENTUALI
-// ==========================================
 model Review {
-  id            String  @id @default(cuid())
-  productId     String
-  product       Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-  userId        String?
-  user          User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
-  customerEmail String
-  customerName  String
-  rating        Int
-  title         String?
-  content       String?
-  isVerified    Boolean @default(false) 
-  isApproved    Boolean @default(false) 
-  helpfulCount  Int     @default(0)
-  isPinned      Boolean @default(false)
-  reportCount   Int     @default(0)
+  id             String                @id @default(cuid())
+  productId      String
+  userId         String?
+  customerEmail  String
+  customerName   String
+  rating         Int
+  title          String?
+  isVerified     Boolean               @default(false)
+  isApproved     Boolean               @default(false)
+  helpfulCount   Int                   @default(0)
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  content        String?
+  isPinned       Boolean               @default(false)
   moderatorNotes String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  // COLLEGAMENTO ORDINE
-  orderId String? 
-  order   Order?  @relation(fields: [orderId], references: [id], onDelete: SetNull)
-
-  // RELAZIONI
-  helpfulVotes  ReviewHelpfulVote[]
-  reports       ReviewReport[]
-  adminActions  ReviewModerationLog[]
-  notifications Notification[]
+  orderId        String?
+  reportCount    Int                   @default(0)
+  notifications  Notification[]
+  helpfulVotes   ReviewHelpfulVote[]
+  adminActions   ReviewModerationLog[]
+  reports        ReviewReport[]
+  order          Order?                @relation(fields: [orderId], references: [id])
+  product        Product               @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user           User?                 @relation(fields: [userId], references: [id])
 
   @@unique([userId, productId], name: "unique_user_product_review")
   @@index([productId, isApproved])
@@ -259,36 +207,36 @@ model Review {
 model ReviewHelpfulVote {
   id        String   @id @default(cuid())
   userId    String?
-  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
   reviewId  String
-  review    Review   @relation(fields: [reviewId], references: [id], onDelete: Cascade)
-  isHelpful Boolean 
+  isHelpful Boolean
   ipAddress String?
   createdAt DateTime @default(now())
-  
+  review    Review   @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@unique([userId, reviewId], name: "unique_user_review_vote")
   @@unique([ipAddress, reviewId], name: "unique_ip_review_vote")
   @@map("review_helpful_votes")
 }
 
 model ReviewReport {
-  id             String       @id @default(cuid())
-  reason         ReportReason
-  description    String?
-  status         ReportStatus @default(PENDING)
-  userId         String?
-  user           User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  reviewId       String
-  review         Review       @relation(fields: [reviewId], references: [id], onDelete: Cascade)
-  reporterEmail  String?
-  reporterName   String?
-  handledBy      String?
-  handler        User?        @relation("ReportHandler", fields: [handledBy], references: [id])
-  handledAt      DateTime?
-  adminNotes     String?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  
+  id            String       @id @default(cuid())
+  reason        ReportReason
+  description   String?
+  status        ReportStatus @default(PENDING)
+  userId        String?
+  reviewId      String
+  reporterEmail String?
+  reporterName  String?
+  handledBy     String?
+  handledAt     DateTime?
+  adminNotes    String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  handler       User?        @relation("ReportHandler", fields: [handledBy], references: [id])
+  review        Review       @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  user          User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([status])
   @@index([reviewId])
   @@map("review_reports")
@@ -300,58 +248,51 @@ model ReviewModerationLog {
   reason      String?
   notes       String?
   reviewId    String
-  review      Review           @relation(fields: [reviewId], references: [id], onDelete: Cascade)
   moderatorId String
-  moderator   User             @relation("ReviewModerator", fields: [moderatorId], references: [id])
   createdAt   DateTime         @default(now())
-  
+  moderator   User             @relation("ReviewModerator", fields: [moderatorId], references: [id])
+  review      Review           @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+
   @@index([reviewId])
   @@index([moderatorId])
   @@map("review_moderation_logs")
 }
 
-// ==========================================
-//          ORDINI ED EVENTUALI
-// ==========================================
 model Order {
-  id                    String            @id @default(cuid())
+  id                    String           @id @default(cuid())
   customerEmail         String
   customerFirstName     String?
   customerLastName      String?
-  total                 Decimal           @db.Decimal(10, 2)
-  status                OrderStatus       @default(PENDING)
-  currency              String            @default("EUR")
-  exchangeRate          Decimal?          @db.Decimal(10, 4) 
-  originalAmount        Decimal?          @db.Decimal(10, 2)
+  total                 Decimal          @db.Decimal(10, 2)
+  status                OrderStatus      @default(PENDING)
+  currency              String           @default("EUR")
+  exchangeRate          Decimal?         @db.Decimal(10, 4)
+  originalAmount        Decimal?         @db.Decimal(10, 2)
   paymentProvider       PaymentProvider?
   stripePaymentIntentId String?
   paypalOrderId         String?
-  paymentStatus         PaymentStatus     @default(PENDING)
-  createdAt             DateTime          @default(now())
-  updatedAt             DateTime          @updatedAt
-
-  // RELAZIONI
-  userId         String?
-  user           User?            @relation(fields: [userId], references: [id])
-  orderItems     OrderItem[]
-  reviews        Review[]
-  notifications  Notification[]
-  supportTickets SupportTicket[]
+  paymentStatus         PaymentStatus    @default(PENDING)
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+  userId                String?
+  notifications         Notification[]
+  orderItems            OrderItem[]
+  user                  User?            @relation(fields: [userId], references: [id])
+  reviews               Review[]
+  supportTickets        SupportTicket[]
 
   @@map("orders")
 }
 
 model OrderItem {
-  id       String  @id @default(cuid())
-  quantity Int     @default(1)
-  price    Decimal @db.Decimal(10, 2)
-  orderId  String
-  order    Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-
-  // PRODOTTO O VARIANTE
+  id        String          @id @default(cuid())
+  quantity  Int             @default(1)
+  price     Decimal         @db.Decimal(10, 2)
+  orderId   String
   productId String?
-  product   Product? @relation(fields: [productId], references: [id])
   variantId String?
+  order     Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product   Product?        @relation(fields: [productId], references: [id])
   variant   ProductVariant? @relation(fields: [variantId], references: [id])
 
   @@map("order_items")
@@ -361,7 +302,7 @@ model DiscountCode {
   id            String       @id @default(cuid())
   code          String       @unique
   description   String?
-  discountType  DiscountType 
+  discountType  DiscountType
   discountValue Decimal      @db.Decimal(10, 2)
   isActive      Boolean      @default(true)
   validFrom     DateTime?
@@ -399,17 +340,14 @@ model EmailQueue {
   @@map("email_queue")
 }
 
-// ==========================================
-//          VERIFICHE ACCOUNT
-// ==========================================
 model PasswordResetToken {
   id        String   @id @default(cuid())
   token     String   @unique
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   expiresAt DateTime
   createdAt DateTime @default(now())
   used      Boolean  @default(false)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("password_reset_tokens")
 }
@@ -418,24 +356,21 @@ model EmailVerificationToken {
   id        String   @id @default(cuid())
   token     String   @unique
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   expiresAt DateTime
   createdAt DateTime @default(now())
   used      Boolean  @default(false)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("email_verification_tokens")
 }
 
-// ==========================================
-//                NOTIFICHE
-// ==========================================
 model Notification {
   id             String               @id @default(cuid())
-  userId         String?  
+  userId         String?
   type           NotificationType
   title          String
   message        String
-  data           Json?    
+  data           Json?
   priority       NotificationPriority @default(NORMAL)
   category       NotificationCategory
   isRead         Boolean              @default(false)
@@ -447,18 +382,16 @@ model Notification {
   orderId        String?
   productId      String?
   reviewId       String?
-  userId_ref     String? 
-  source         String?  
-  actionUrl      String?  
+  userId_ref     String?
+  source         String?
+  actionUrl      String?
   expiresAt      DateTime?
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
-  
-  // RELAZIONI
-  user    User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  order   Order?   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product Product? @relation(fields: [productId], references: [id], onDelete: Cascade)
-  review  Review?  @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  order          Order?               @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product        Product?             @relation(fields: [productId], references: [id], onDelete: Cascade)
+  review         Review?              @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  user           User?                @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
   @@index([type, createdAt])
@@ -468,26 +401,25 @@ model Notification {
 }
 
 model NotificationPreference {
-  id                  String  @id @default(cuid())
-  userId              String  @unique
-  enableWebSocket     Boolean @default(true)
-  enableEmail         Boolean @default(true)
-  enablePush          Boolean @default(false)
-  orderUpdates        Boolean @default(true)
-  paymentAlerts       Boolean @default(true)
-  productUpdates      Boolean @default(true)
-  reviewNotifications Boolean @default(true)
-  promotions          Boolean @default(false)
-  systemAlerts        Boolean @default(true)
-  inventoryAlerts     Boolean @default(false)
-  quietHours          Json?    
-  instantDelivery     Boolean @default(true)
-  batchDelivery       Boolean @default(false)
+  id                  String   @id @default(cuid())
+  userId              String   @unique
+  enableWebSocket     Boolean  @default(true)
+  enableEmail         Boolean  @default(true)
+  enablePush          Boolean  @default(false)
+  orderUpdates        Boolean  @default(true)
+  paymentAlerts       Boolean  @default(true)
+  productUpdates      Boolean  @default(true)
+  reviewNotifications Boolean  @default(true)
+  promotions          Boolean  @default(false)
+  systemAlerts        Boolean  @default(true)
+  inventoryAlerts     Boolean  @default(false)
+  quietHours          Json?
+  instantDelivery     Boolean  @default(true)
+  batchDelivery       Boolean  @default(false)
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
-  
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@map("notification_preferences")
 }
 
@@ -509,71 +441,64 @@ model NotificationTemplate {
   variables        Json?
   createdAt        DateTime             @default(now())
   updatedAt        DateTime             @updatedAt
-  
+
   @@map("notification_templates")
 }
 
 model WebSocketConnection {
-  id                 String   @id @default(cuid())
+  id                 String    @id @default(cuid())
   userId             String
-  socketId           String   @unique
+  socketId           String    @unique
   userAgent          String?
   ipAddress          String?
-  isActive           Boolean  @default(true)
-  lastPing           DateTime @default(now())
-  connectedAt        DateTime @default(now())
+  isActive           Boolean   @default(true)
+  lastPing           DateTime  @default(now())
+  connectedAt        DateTime  @default(now())
   disconnectedAt     DateTime?
-  subscribedChannels Json? 
-  
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+  subscribedChannels Json?
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([userId, isActive])
   @@index([socketId])
   @@map("websocket_connections")
 }
 
-// ==========================================
-//                SUPPORTO
-// ==========================================
-
 model SupportTicket {
-  id               String          @id @default(cuid())
-  ticketNumber     String          @unique 
+  id               String               @id @default(cuid())
+  ticketNumber     String               @unique
   subject          String
   description      String
-  status           TicketStatus    @default(OPEN)
-  priority         TicketPriority  @default(MEDIUM)
+  status           TicketStatus         @default(OPEN)
+  priority         TicketPriority       @default(MEDIUM)
   category         TicketCategory
   businessModel    BusinessModel
-  tenantId         String?          
+  tenantId         String?
   userId           String
-  user             User            @relation("UserTickets", fields: [userId], references: [id], onDelete: Cascade)
   assignedToId     String?
-  assignedTo       User?           @relation("AssignedTickets", fields: [assignedToId], references: [id], onDelete: SetNull)
-  vendorId         String?         
-  vendor           User?           @relation("VendorTickets", fields: [vendorId], references: [id], onDelete: SetNull)
-  orderId          String?         
-  order            Order?          @relation(fields: [orderId], references: [id], onDelete: SetNull)
-  productId        String?           
-  product          Product?        @relation(fields: [productId], references: [id], onDelete: SetNull)
+  vendorId         String?
+  orderId          String?
+  productId        String?
   firstResponseAt  DateTime?
   lastResponseAt   DateTime?
   resolvedAt       DateTime?
   closedAt         DateTime?
   escalatedAt      DateTime?
-  escalatedFrom    String?         
+  escalatedFrom    String?
   escalationReason String?
-  tags             String[]        @default([])
-  metadata         Json?           @default("{}")
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
-  
-  // RELAZIONI
-  messages     SupportMessage[]
-  attachments  SupportAttachment[]
-  slaConfig    SupportSLA?
-  satisfaction SupportSatisfaction?
-  
+  tags             String[]             @default([])
+  metadata         Json?                @default("{}")
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  attachments      SupportAttachment[]
+  messages         SupportMessage[]
+  satisfaction     SupportSatisfaction?
+  slaConfig        SupportSLA?
+  assignedTo       User?                @relation("AssignedTickets", fields: [assignedToId], references: [id])
+  order            Order?               @relation(fields: [orderId], references: [id])
+  product          Product?             @relation(fields: [productId], references: [id])
+  user             User                 @relation("UserTickets", fields: [userId], references: [id], onDelete: Cascade)
+  vendor           User?                @relation("VendorTickets", fields: [vendorId], references: [id])
+
   @@index([status, priority])
   @@index([userId])
   @@index([assignedToId])
@@ -587,20 +512,18 @@ model SupportTicket {
 }
 
 model SupportMessage {
-  id         String    @id @default(cuid())
-  content    String
-  isInternal Boolean   @default(false) 
-  ticketId   String
-  ticket     SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  authorId   String
-  author     User      @relation("SupportMessages", fields: [authorId], references: [id], onDelete: Cascade)
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
-  
-  // RELAZIONI
+  id          String               @id @default(cuid())
+  content     String
+  isInternal  Boolean              @default(false)
+  ticketId    String
+  authorId    String
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
   attachments SupportAttachment[]
   readBy      SupportMessageRead[]
-  
+  author      User                 @relation("SupportMessages", fields: [authorId], references: [id], onDelete: Cascade)
+  ticket      SupportTicket        @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
   @@index([ticketId, createdAt])
   @@index([authorId])
   @@map("support_messages")
@@ -609,11 +532,11 @@ model SupportMessage {
 model SupportMessageRead {
   id        String         @id @default(cuid())
   messageId String
-  message   SupportMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
   userId    String
-  user      User           @relation("ReadMessages", fields: [userId], references: [id], onDelete: Cascade)
   readAt    DateTime       @default(now())
-  
+  message   SupportMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user      User           @relation("ReadMessages", fields: [userId], references: [id], onDelete: Cascade)
+
   @@unique([messageId, userId])
   @@map("support_message_reads")
 }
@@ -626,13 +549,13 @@ model SupportAttachment {
   size         Int
   url          String
   ticketId     String?
-  ticket       SupportTicket?  @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   messageId    String?
-  message      SupportMessage? @relation(fields: [messageId], references: [id], onDelete: Cascade)
   uploadedById String
-  uploadedBy   User            @relation("SupportAttachments", fields: [uploadedById], references: [id], onDelete: Cascade)
   createdAt    DateTime        @default(now())
-  
+  message      SupportMessage? @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  ticket       SupportTicket?  @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  uploadedBy   User            @relation("SupportAttachments", fields: [uploadedById], references: [id], onDelete: Cascade)
+
   @@index([ticketId])
   @@index([messageId])
   @@map("support_attachments")
@@ -641,7 +564,6 @@ model SupportAttachment {
 model SupportSLA {
   id                  String        @id @default(cuid())
   ticketId            String        @unique
-  ticket              SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   firstResponseSLA    Int
   resolutionSLA       Int
   firstResponseDue    DateTime
@@ -650,27 +572,28 @@ model SupportSLA {
   resolutionMet       Boolean       @default(false)
   firstResponseBreach Boolean       @default(false)
   resolutionBreach    Boolean       @default(false)
-  totalBreachTime     Int           @default(0) 
+  totalBreachTime     Int           @default(0)
   createdAt           DateTime      @default(now())
   updatedAt           DateTime      @updatedAt
-  
+  ticket              SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
   @@index([firstResponseDue])
   @@index([resolutionDue])
   @@map("support_sla")
 }
 
 model SupportSatisfaction {
-  id             String        @id @default(cuid())
-  ticketId       String        @unique
-  ticket         SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  rating         Int             
-  feedback       String?
-  responseTime   Int?             
-  helpfulness    Int?             
-  professionalism Int?             
-  resolution     Int?            
-  submittedAt    DateTime      @default(now())
-  
+  id              String        @id @default(cuid())
+  ticketId        String        @unique
+  rating          Int
+  feedback        String?
+  responseTime    Int?
+  helpfulness     Int?
+  professionalism Int?
+  resolution      Int?
+  submittedAt     DateTime      @default(now())
+  ticket          SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
   @@index([rating])
   @@index([submittedAt])
   @@map("support_satisfaction")
@@ -679,15 +602,15 @@ model SupportSatisfaction {
 model SupportConfig {
   id                 String        @id @default(cuid())
   businessModel      BusinessModel
-  tenantId           String?         
+  tenantId           String?
   mode               String
   escalationEnabled  Boolean       @default(true)
   chatEnabled        Boolean       @default(true)
   slaTracking        Boolean       @default(true)
-  lowPrioritySLA     Int           @default(1440)   
-  mediumPrioritySLA  Int           @default(480)     
-  highPrioritySLA    Int           @default(120)     
-  urgentPrioritySLA  Int           @default(30)      
+  lowPrioritySLA     Int           @default(1440)
+  mediumPrioritySLA  Int           @default(480)
+  highPrioritySLA    Int           @default(120)
+  urgentPrioritySLA  Int           @default(30)
   businessHoursStart String        @default("09:00")
   businessHoursEnd   String        @default("17:00")
   businessDays       String[]      @default(["monday", "tuesday", "wednesday", "thursday", "friday"])
@@ -700,7 +623,7 @@ model SupportConfig {
   maxTicketsPerDay   Int           @default(50)
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
-  
+
   @@unique([businessModel, tenantId])
   @@index([businessModel])
   @@map("support_config")
@@ -709,21 +632,21 @@ model SupportConfig {
 model SupportAgent {
   id                   String           @id @default(cuid())
   userId               String           @unique
-  user                 User             @relation("SupportAgent", fields: [userId], references: [id], onDelete: Cascade)
   role                 SupportRole      @default(ADMIN)
   businessModel        BusinessModel
-  tenantId             String?          
+  tenantId             String?
   categories           TicketCategory[]
   maxConcurrentTickets Int              @default(10)
   isActive             Boolean          @default(true)
   isAvailable          Boolean          @default(true)
   totalTickets         Int              @default(0)
-  avgResponseTime      Int              @default(0) 
-  avgResolutionTime    Int              @default(0) 
+  avgResponseTime      Int              @default(0)
+  avgResolutionTime    Int              @default(0)
   satisfactionRating   Float            @default(0)
   createdAt            DateTime         @default(now())
   updatedAt            DateTime         @updatedAt
-  
+  user                 User             @relation("SupportAgent", fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([businessModel, tenantId])
   @@index([isActive, isAvailable])
   @@map("support_agents")
@@ -734,12 +657,12 @@ model SupportAnalytics {
   businessModel         BusinessModel
   tenantId              String?
   date                  DateTime      @db.Date
-  hour                  Int?            
+  hour                  Int?
   ticketsCreated        Int           @default(0)
   ticketsResolved       Int           @default(0)
   ticketsClosed         Int           @default(0)
-  avgResponseTime       Int           @default(0) 
-  avgResolutionTime     Int           @default(0) 
+  avgResponseTime       Int           @default(0)
+  avgResolutionTime     Int           @default(0)
   slaBreaches           Int           @default(0)
   avgSatisfaction       Float         @default(0)
   totalRatings          Int           @default(0)
@@ -755,15 +678,11 @@ model SupportAnalytics {
   bugReports            Int           @default(0)
   featureRequests       Int           @default(0)
   createdAt             DateTime      @default(now())
-  
+
   @@unique([businessModel, tenantId, date, hour])
   @@index([businessModel, tenantId, date])
   @@map("support_analytics")
 }
-
-// ==========================================
-//                ENUM
-// ==========================================
 
 enum UserRole {
   USER
@@ -843,41 +762,34 @@ enum NotificationType {
   ORDER_DELIVERED
   ORDER_CANCELLED
   ORDER_REFUNDED
-
   PAYMENT_SUCCESS
   PAYMENT_FAILED
   PAYMENT_PENDING
   PAYMENT_REFUNDED
-
   PRODUCT_BACK_IN_STOCK
   PRODUCT_PRICE_DROP
   PRODUCT_NEW_REVIEW
   WISHLIST_ITEM_SALE
-
   REVIEW_SUBMITTED
   REVIEW_APPROVED
   REVIEW_REJECTED
   REVIEW_HELPFUL_VOTE
-
   ACCOUNT_CREATED
   PASSWORD_CHANGED
   EMAIL_VERIFIED
   PROFILE_UPDATED
-
   NEW_ORDER_ADMIN
   LOW_STOCK_ALERT
   HIGH_VALUE_ORDER
   SUSPICIOUS_ACTIVITY
   SYSTEM_ERROR
   BACKUP_COMPLETED
-
   PROMOTION_STARTED
   DISCOUNT_EXPIRING
   CART_ABANDONED
   WELCOME_SERIES
-
   SUPPORT_TICKET_CREATED
-  SUPPORT_TICKET_ASSIGNED  
+  SUPPORT_TICKET_ASSIGNED
   SUPPORT_TICKET_ESCALATED
   SUPPORT_MESSAGE_RECEIVED
   SUPPORT_TICKET_RESOLVED
@@ -885,7 +797,6 @@ enum NotificationType {
   SUPPORT_SATISFACTION_SUBMITTED
   SUPPORT_AGENT_CREATED
   SUPPORT_ALERT
-
   SYSTEM_NOTIFICATION
 }
 

@@ -47,6 +47,8 @@ export default function CartSlideBar({ className }: CartSlideBar = {}) {
     total?: number;
     status?: string;
     paymentStatus?: string;
+    finalAmount?: number;
+    finalCurrency?: string;
     orderItems?: Array<{
       id: string;
       quantity: number;
@@ -82,6 +84,15 @@ export default function CartSlideBar({ className }: CartSlideBar = {}) {
   // AVVIA CHECKOUT
   const handleCheckout = () => {
     if (cart.items.length === 0) return;
+
+    // DEBUG
+    console.log("🛒 CARRELLO DEBUG:", {
+      items: cart.items,
+      originalTotal: cart.originalTotal,
+      displayTotal: cart.displayTotal,
+      displayCurrency: cart.displayCurrency,
+      cartTotal: getCartTotal(),
+    });
     clearError();
     setCheckoutStep("form");
   };
@@ -119,9 +130,25 @@ export default function CartSlideBar({ className }: CartSlideBar = {}) {
 
   // STRIPE PAYMENT SUCCESS
   const handleStripeSuccess = (paymentIntent: any) => {
-    setSuccessData(paymentIntent);
+    const finalAmount = getCartTotal();
+    const finalCurrency = getDisplayCurrency();
+
+    console.log("💰 SAVING SUCCESS DATA:", {
+      finalAmount,
+      finalCurrency,
+      paymentIntentId: paymentIntent?.id,
+    });
+
+    setSuccessData({
+      id: paymentIntent?.id,
+      finalAmount: finalAmount,
+      finalCurrency: finalCurrency,
+    });
+
     setCheckoutStep("success");
-    clearCart();
+    setTimeout(() => {
+      clearCart();
+    }, 100);
   };
 
   // STRIPE PAYMENT ERROR
@@ -160,37 +187,12 @@ export default function CartSlideBar({ className }: CartSlideBar = {}) {
           <div className="flex items-center justify-between border-b border-gray-200 p-6">
             <div>
               <h2 className="text-lg font-semibold text-gray-900">
-                {checkoutStep === "cart" && `Carrello (${cart.itemsCount})`}
-                {checkoutStep === "form" && "Dati checkout"}
-                {checkoutStep === "stripe" && "Pagamento"}
+                {checkoutStep === "cart" && `Cart (${cart.itemsCount})`}
+                {checkoutStep === "form" && "Checkout details"}
+                {checkoutStep === "stripe" && "Payment"}
                 {checkoutStep === "paypal" && "PayPal"}
-                {checkoutStep === "success" && "Completato!"}
+                {checkoutStep === "success" && "Order completed!"}
               </h2>
-
-              {/* BREADCRUMB */}
-              <div className="text-xs text-gray-500 mt-1">
-                <span
-                  className={checkoutStep === "cart" ? "text-purple-600" : ""}
-                >
-                  Carrello
-                </span>
-                <span className="mx-1">→</span>
-                <span
-                  className={checkoutStep === "form" ? "text-purple-600" : ""}
-                >
-                  Dati
-                </span>
-                <span className="mx-1">→</span>
-                <span
-                  className={
-                    checkoutStep === "stripe" || checkoutStep === "paypal"
-                      ? "text-purple-600"
-                      : ""
-                  }
-                >
-                  Pagamento
-                </span>
-              </div>
             </div>
 
             <button
@@ -232,7 +234,7 @@ export default function CartSlideBar({ className }: CartSlideBar = {}) {
                   <div className="mb-4 rounded-lg bg-blue-50 border border-blue-200 p-3">
                     <div className="flex items-center gap-2 text-sm text-blue-600">
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-                      Aggiornamento prezzi...
+                      Updating prices…
                     </div>
                   </div>
                 )}
@@ -255,11 +257,8 @@ export default function CartSlideBar({ className }: CartSlideBar = {}) {
                       </svg>
                     </div>
                     <h3 className="text-lg font-medium text-gray-900 mb-2">
-                      Il tuo carrello è vuoto
+                      Your cart is empty
                     </h3>
-                    <p className="text-gray-500 text-sm">
-                      Aggiungi alcuni prodotti per iniziare
-                    </p>
                   </div>
                 ) : (
                   <div className="space-y-4">
@@ -353,14 +352,14 @@ export default function CartSlideBar({ className }: CartSlideBar = {}) {
             {checkoutStep === "form" && (
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold text-gray-900">
-                  Dati per il checkout
+                  Information for checkout
                 </h3>
 
                 <div className="space-y-3">
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Nome
+                        First name
                       </label>
                       <input
                         type="text"
@@ -369,14 +368,14 @@ export default function CartSlideBar({ className }: CartSlideBar = {}) {
                           updateFormData("customerFirstName", e.target.value)
                         }
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                        placeholder="Nome"
+                        placeholder="First name"
                         required
                       />
                     </div>
 
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Cognome
+                        Last name
                       </label>
                       <input
                         type="text"
@@ -385,7 +384,7 @@ export default function CartSlideBar({ className }: CartSlideBar = {}) {
                           updateFormData("customerLastName", e.target.value)
                         }
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                        placeholder="Cognome"
+                        placeholder="Last name"
                         required
                       />
                     </div>
@@ -402,7 +401,7 @@ export default function CartSlideBar({ className }: CartSlideBar = {}) {
                         updateFormData("customerEmail", e.target.value)
                       }
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                      placeholder="la-tua-email@esempio.com"
+                      placeholder="The file will be sent here"
                       required
                     />
                   </div>
@@ -410,41 +409,58 @@ export default function CartSlideBar({ className }: CartSlideBar = {}) {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Metodo di pagamento
+                    Payment method
                   </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        updateFormData("paymentProvider", "STRIPE")
-                      }
-                      className={`p-3 border rounded-lg text-sm font-medium transition-all ${
-                        formData.paymentProvider === "STRIPE"
-                          ? "border-purple-500 bg-purple-50 text-purple-700"
-                          : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
-                      }`}
-                    >
-                      💳 Carta di credito
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        updateFormData("paymentProvider", "PAYPAL")
-                      }
-                      className={`p-3 border rounded-lg text-sm font-medium transition-all ${
-                        formData.paymentProvider === "PAYPAL"
-                          ? "border-blue-500 bg-blue-50 text-blue-700"
-                          : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
-                      }`}
-                    >
-                      🅿️ PayPal
-                    </button>
+                  <div className="grid grid-cols-2 gap-4">
+                    {/* Stripe Button + Logo */}
+                    <div className="flex flex-col items-center">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateFormData("paymentProvider", "STRIPE")
+                        }
+                        className={`w-full p-3 border rounded-lg text-sm font-medium transition-all ${
+                          formData.paymentProvider === "STRIPE"
+                            ? "border-purple-500 bg-purple-50 text-purple-700"
+                            : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                        }`}
+                      >
+                        Credit / Debit Card
+                      </button>
+                      <img
+                        src="/stripe.png"
+                        alt="Stripe"
+                        className="w-full h-auto mt-1"
+                      />
+                    </div>
+
+                    {/* PayPal Button */}
+                    <div className="flex flex-col items-center">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateFormData("paymentProvider", "PAYPAL")
+                        }
+                        className={`w-full p-3 border rounded-lg text-sm font-medium transition-all ${
+                          formData.paymentProvider === "PAYPAL"
+                            ? "border-blue-500 bg-blue-50 text-blue-700"
+                            : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                        }`}
+                      >
+                        PayPal
+                      </button>
+                      <img
+                        src="/paypal.png"
+                        alt="PayPal"
+                        className="w-full h-auto mt-1"
+                      />
+                    </div>
                   </div>
                 </div>
 
                 <div className="flex items-center justify-between py-3 border-t border-gray-200">
                   <span className="text-lg font-medium text-gray-900">
-                    Totale
+                    Order total
                   </span>
                   <span className="text-2xl font-bold text-purple-600">
                     {formatPrice(getCartTotal())}
@@ -497,11 +513,11 @@ export default function CartSlideBar({ className }: CartSlideBar = {}) {
                   </svg>
                 </div>
                 <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                  Pagamento completato!
+                  Payment successful!
                 </h3>
                 <p className="text-gray-600 mb-6">
-                  Grazie per il tuo acquisto. Riceverai una email di conferma a
-                  breve.
+                  Thank you for your purchase. You will receive a confirmation
+                  email shortly, with a link to download your file.
                 </p>
 
                 <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
@@ -510,14 +526,14 @@ export default function CartSlideBar({ className }: CartSlideBar = {}) {
                       <strong>Email:</strong> {formData.customerEmail}
                     </div>
                     <div>
-                      <strong>Importo:</strong> {formatPrice(getCartTotal())}
+                      <strong>Amount:</strong>{" "}
+                      {successData?.finalAmount && successData?.finalCurrency
+                        ? formatPriceWithCurrency(
+                            successData.finalAmount,
+                            successData.finalCurrency
+                          )
+                        : formatPrice(getCartTotal())}
                     </div>
-                    {successData && (
-                      <div>
-                        <strong>ID Transazione:</strong>{" "}
-                        {successData.id || successData.orderId}
-                      </div>
-                    )}
                   </div>
                 </div>
 
@@ -528,7 +544,7 @@ export default function CartSlideBar({ className }: CartSlideBar = {}) {
                   }}
                   className="w-full bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors"
                 >
-                  Chiudi
+                  Close
                 </button>
               </div>
             )}
@@ -542,7 +558,7 @@ export default function CartSlideBar({ className }: CartSlideBar = {}) {
                   <>
                     <div className="flex items-center justify-between mb-4">
                       <span className="text-lg font-medium text-gray-900">
-                        Totale
+                        Order total
                       </span>
                       <span className="text-2xl font-bold text-purple-600">
                         {formatPrice(getCartTotal())}
@@ -569,7 +585,7 @@ export default function CartSlideBar({ className }: CartSlideBar = {}) {
                         onClick={clearCart}
                         className="w-full py-2 px-4 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors duration-200"
                       >
-                        Svuota carrello
+                        Clear cart
                       </button>
                     </div>
                   </>
@@ -598,10 +614,10 @@ export default function CartSlideBar({ className }: CartSlideBar = {}) {
                       {isProcessing ? (
                         <div className="flex items-center justify-center gap-2">
                           <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                          Elaborazione...
+                          Processing…
                         </div>
                       ) : (
-                        `Continua - ${formatPrice(getCartTotal())}`
+                        `Continue - ${formatPrice(getCartTotal())}`
                       )}
                     </button>
 
@@ -610,13 +626,13 @@ export default function CartSlideBar({ className }: CartSlideBar = {}) {
                       disabled={isProcessing}
                       className="w-full py-2 px-4 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors duration-200"
                     >
-                      Indietro
+                      Back
                     </button>
                   </div>
                 )}
 
                 <div className="mt-4 text-center text-xs text-gray-500">
-                  🔒 Pagamento sicuro • Download immediato • Garanzia 30 giorni
+                  🔒 Secure payment • Instant download
                 </div>
               </div>
             )}
@@ -625,3 +641,15 @@ export default function CartSlideBar({ className }: CartSlideBar = {}) {
     </div>
   );
 }
+
+const formatPriceWithCurrency = (amount: number, currency: string): string => {
+  const currencySymbols: Record<string, string> = {
+    USD: "$",
+    EUR: "€",
+    GBP: "£",
+    AUD: "A$",
+    CAD: "C$",
+  };
+  const symbol = currencySymbols[currency] || currency;
+  return `${symbol}${amount.toFixed(2)}`;
+};

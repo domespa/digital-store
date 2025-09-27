@@ -1,4 +1,5 @@
-import rateLimit from "express-rate-limit";
+import { rateLimit, ipKeyGenerator } from "express-rate-limit";
+import { Request } from "express";
 import slowDown from "express-slow-down";
 
 // ===========================================
@@ -9,6 +10,8 @@ import slowDown from "express-slow-down";
 export const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minuti
   max: 100, // Massimo 100 richieste per finestra
+  keyGenerator: ipKeyGenerator as unknown as (req: Request) => string,
+
   message: {
     success: false,
     error: "Too many requests, try again later.",

@@ -181,7 +181,7 @@ class EmailService {
   // EMAIL CONFERMA ORDINE
   async sendOrderConfirmation(order: OrderResponse): Promise<boolean> {
     try {
-      const emailSubject = `Conferma Ordine #${order.id.slice(
+      const emailSubject = `Order Confirmation #${order.id.slice(
         -8
       )} - Digital Store`;
       const emailHTML = this.generateOrderConfirmationHTML(order);
@@ -207,12 +207,12 @@ class EmailService {
     previousStatus?: string
   ): Promise<boolean> {
     try {
-      let subject = `Aggiornamento Ordine #${order.id.slice(-8)}`;
+      let subject = `Order Update #${order.id.slice(-8)}`;
 
       if (order.status === "PAID") {
-        subject = `Pagamento Completato - Ordine #${order.id.slice(-8)}`;
+        subject = `Payment Completed - Order #${order.id.slice(-8)}`;
       } else if (order.status === "COMPLETED") {
-        subject = `I tuoi prodotti sono pronti - Ordine #${order.id.slice(-8)}`;
+        subject = `Your products are ready - Order${order.id.slice(-8)}`;
       }
 
       const emailHTML = this.generateOrderConfirmationHTML(order);
@@ -272,7 +272,7 @@ class EmailService {
       <html>
       <head>
         <meta charset="utf-8">
-        <title>Conferma Ordine - Digital Store</title>
+        <title>Order Confirmation - Digital Store</title>
         <style>
           body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
           .container { max-width: 600px; margin: 0 auto; padding: 20px; }
@@ -291,14 +291,14 @@ class EmailService {
       <body>
         <div class="container">
           <div class="header">
-            <h1 style="margin: 0;">Conferma Ordine</h1>
-            <p style="margin: 10px 0 0 0;">Grazie per il tuo acquisto!</p>
+            <h1 style="margin: 0;">Order Confirmation</h1>
+            <p style="margin: 10px 0 0 0;">Thank you for your purchase!</p>
           </div>
           
           <div class="content">
             <div class="order-info">
-              <h2>Dettagli Ordine</h2>
-              <p><strong>Numero Ordine:</strong> ${order.id}</p>
+              <h2>Order Details</h2>
+              <p><strong>Order Number:</strong> ${order.id}</p>
               <p><strong>Email:</strong> ${order.customerEmail}</p>
               ${
                 order.customerFirstName
@@ -316,31 +316,31 @@ class EmailService {
                 }">
                   ${
                     order.status === "PENDING"
-                      ? "In attesa di pagamento"
+                      ? "Pending payment"
                       : order.status === "PAID"
-                      ? "Pagamento completato"
+                      ? "Payment successful"
                       : order.status === "COMPLETED"
-                      ? "Completato"
+                      ? "Completed"
                       : order.status
                   }
                 </span>
               </p>
             </div>
 
-            <h3>Prodotti Acquistati</h3>
+            <h3>Purchased Products</h3>
             <table class="table" style="background: white; border-radius: 8px;">
               <thead>
                 <tr>
-                  <th>Prodotto</th>
-                  <th style="text-align: center;">Quantità</th>
-                  <th style="text-align: right;">Prezzo Unit.</th>
-                  <th style="text-align: right;">Totale</th>
+                  <th>Product</th>
+                  <th style="text-align: center;">Quantity</th>
+                  <th style="text-align: right;">Unit Price</th>
+                  <th style="text-align: right;">Total</th>
                 </tr>
               </thead>
               <tbody>
                 ${orderItemsHTML}
                 <tr class="total-row">
-                  <td colspan="3" style="padding: 15px 8px; text-align: right;"><strong>TOTALE:</strong></td>
+                  <td colspan="3" style="padding: 15px 8px; text-align: right;"><strong>TOTAL:</strong></td>
                   <td style="padding: 15px 8px; text-align: right;"><strong>€${order.total.toFixed(
                     2
                   )}</strong></td>
@@ -352,10 +352,9 @@ class EmailService {
               order.status === "PENDING"
                 ? `
               <div style="background: #FEF3C7; border-left: 4px solid #F59E0B; padding: 15px; margin: 20px 0; border-radius: 4px;">
-                <h4 style="margin: 0 0 10px 0; color: #92400E;">Pagamento in sospeso</h4>
+                <h4 style="margin: 0 0 10px 0; color: #92400E;">Payment pending</h4>
                 <p style="margin: 0; color: #92400E;">
-                  Il tuo ordine è stato ricevuto! Completa il pagamento per procedere. 
-                  Riceverai un'altra email di conferma una volta completato il pagamento.
+                  Your order has been received! Please complete the payment to proceed. You will receive another confirmation email once the payment is completed.
                 </p>
               </div>
             `
@@ -366,9 +365,9 @@ class EmailService {
               order.status === "PAID" || order.status === "COMPLETED"
                 ? `
               <div style="background: #D1FAE5; border-left: 4px solid #10B981; padding: 15px; margin: 20px 0; border-radius: 4px;">
-                <h4 style="margin: 0 0 10px 0; color: #065F46;">Pagamento Completato!</h4>
+                <h4 style="margin: 0 0 10px 0; color: #065F46;">Payment Completed!</h4>
                 <p style="margin: 0; color: #065F46;">
-                  Il tuo pagamento è stato elaborato con successo. I tuoi prodotti digitali sono pronti per il download!
+                  Your payment has been successfully processed. Your digital products are ready for download!
                 </p>
               </div>
             `
@@ -376,10 +375,10 @@ class EmailService {
             }
 
             <div class="footer">
-              <p>Se hai domande sul tuo ordine, contattaci includendo il numero ordine: <strong>${
+              <p>If you have any questions about your order, please contact us and include your order number: <strong>${
                 order.id
               }</strong></p>
-              <p>Digital Store - La tua piattaforma per prodotti digitali</p>
+              <p>Digital Store - Your digital products platform</p>
             </div>
           </div>
         </div>

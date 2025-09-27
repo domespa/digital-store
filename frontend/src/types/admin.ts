@@ -76,7 +76,7 @@ export interface OnlineUser {
     region: string;
     latitude: number;
     longitude: number;
-  };
+  } | null;
   currentPage: string;
   connectedAt: string;
   lastActivity: string;
@@ -94,7 +94,7 @@ export interface UserSession {
     region: string;
     latitude: number;
     longitude: number;
-  };
+  } | null;
   userAgent: string;
   startTime: string;
   endTime?: string;
@@ -121,4 +121,125 @@ export interface DashboardStats {
     message: string;
     timestamp: string;
   }>;
+}
+
+export interface Product {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  shortDescription: string | null;
+  price: number;
+  originalPrice: number | null;
+  fileName: string;
+  filePath: string;
+  isActive: boolean;
+  isFeatured: boolean;
+  isDigital: boolean;
+  stock: number;
+  lowStockThreshold: number;
+  trackInventory: boolean;
+  allowBackorder: boolean;
+  viewCount: number;
+  downloadCount: number;
+  rating: number;
+  reviewCount: number;
+  createdAt: string;
+  updatedAt: string;
+  publishedAt: string | null;
+  seoTitle: string | null;
+  seoDescription: string | null;
+  categoryId: string | null;
+}
+
+export interface CreateProductRequest {
+  name: string;
+  description?: string;
+  price: number;
+  fileName: string;
+  filePath: string;
+  categoryId?: string;
+}
+
+export interface UpdateProductRequest {
+  name?: string;
+  description?: string;
+  price?: number;
+  fileName?: string;
+  filePath?: string;
+  isActive?: boolean;
+  categoryId?: string;
+  stock?: number;
+  lowStockThreshold?: number;
+  trackInventory?: boolean;
+  allowBackorder?: boolean;
+}
+
+export interface ProductFilters {
+  search?: string;
+  minPrice?: string;
+  maxPrice?: string;
+  isActive?: string;
+  sortBy?: string;
+  sortOrder?: string;
+  page?: string;
+  limit?: string;
+}
+
+export interface ProductListResponse {
+  success: boolean;
+  message: string;
+  products: Product[];
+  total: number;
+  pagination: {
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
+  currency: string;
+}
+
+export interface ProductMutationResponse {
+  success: boolean;
+  message: string;
+  product?: Product;
+}
+
+export interface ApiError {
+  response?: {
+    data?: {
+      message?: string;
+    };
+  };
+  message?: string;
+}
+export interface WebSocketMessage {
+  type: "user_count" | "notification" | "unread_count" | "system";
+  count?: number;
+  data?: unknown;
+}
+
+export interface UserTrackingMessage {
+  type:
+    | "user_connected"
+    | "user_disconnected"
+    | "user_activity"
+    | "session_ended";
+  user?: OnlineUser;
+  sessionId?: string;
+  page?: string;
+  timestamp?: string;
+  endTime?: string;
+}
+
+export interface UseRealTimeUsersReturn {
+  onlineUsers: OnlineUser[];
+  userSessions: UserSession[];
+  loading: boolean;
+  error: string | null;
+  totalOnline: number;
+  totalSessions: number;
+  getOnlineUsersByCountry: (country: string) => OnlineUser[];
+  getSessionsByCountry: (country: string) => UserSession[];
+  isWebSocketConnected: () => boolean;
 }
