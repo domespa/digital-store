@@ -1,5 +1,5 @@
 import { useCart } from "../../hooks/useCart";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useCheckout } from "../../hooks/useCheckout";
 import StripePaymentForm from "../StripePaymentForm";
 import type { CheckoutForm } from "../../types/checkout";
@@ -22,8 +22,13 @@ export default function CartSlideBar({ className }: CartSlideBar = {}) {
     getDisplayCurrency,
   } = useCart();
 
-  const { processCheckoutData, isProcessing, error, clearError } =
-    useCheckout();
+  const {
+    processCheckoutData,
+    capturePayPalPayment,
+    isProcessing,
+    error,
+    clearError,
+  } = useCheckout();
 
   // STATI LOCALI
   const [checkoutStep, setCheckoutStep] = useState<CheckoutStep>("cart");
@@ -62,6 +67,45 @@ export default function CartSlideBar({ className }: CartSlideBar = {}) {
       } | null;
     }>;
   } | null>(null);
+
+  useEffect(() => {
+    const handlePayPalReturn = async () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const token = urlParams.get("token");
+      const pendingOrderId = localStorage.getItem("paypal_pending_order");
+      const savedFormData = localStorage.getItem("paypal_form_data");
+
+      if (token && pendingOrderId) {
+        try {
+          toggleCart();
+          setCheckoutStep("paypal");
+
+          if (savedFormData) {
+            setFormData(JSON.parse(savedFormData));
+          }
+
+          const captureResponse = await capturePayPalPayment(pendingOrderId);
+
+          if (captureResponse.success) {
+            setSuccessData(captureResponse.order);
+            setCheckoutStep("success");
+            clearCart();
+          } else {
+            throw new Error("Payment capture failed");
+          }
+        } catch (error) {
+          console.error("PayPal return error:", error);
+          setCheckoutStep("cart");
+        } finally {
+          localStorage.removeItem("paypal_pending_order");
+          localStorage.removeItem("paypal_form_data");
+          window.history.replaceState({}, "", window.location.pathname);
+        }
+      }
+    };
+
+    handlePayPalReturn();
+  }, []);
 
   // ===========================
   //        UTILITY FUNCTIONS
@@ -189,8 +233,8 @@ export default function CartSlideBar({ className }: CartSlideBar = {}) {
               <h2 className="text-lg font-semibold text-gray-900">
                 {checkoutStep === "cart" && `Cart (${cart.itemsCount})`}
                 {checkoutStep === "form" && "Checkout details"}
-                {checkoutStep === "stripe" && "Payment"}
-                {checkoutStep === "paypal" && "PayPal"}
+                {checkoutStep === "stripe" && "Processing Stripe payment..."}
+                {checkoutStep === "paypal" && "Processing PayPal payment..."}
                 {checkoutStep === "success" && "Order completed!"}
               </h2>
             </div>
@@ -412,7 +456,6 @@ export default function CartSlideBar({ className }: CartSlideBar = {}) {
                     Payment method
                   </label>
                   <div className="grid grid-cols-2 gap-4">
-                    {/* Stripe Button + Logo */}
                     <div className="flex flex-col items-center">
                       <button
                         type="button"
@@ -434,7 +477,6 @@ export default function CartSlideBar({ className }: CartSlideBar = {}) {
                       />
                     </div>
 
-                    {/* PayPal Button */}
                     <div className="flex flex-col items-center">
                       <button
                         type="button"
@@ -486,10 +528,10 @@ export default function CartSlideBar({ className }: CartSlideBar = {}) {
               <div className="text-center py-12">
                 <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto mb-4"></div>
                 <h3 className="text-lg font-medium text-gray-900 mb-2">
-                  Redirecting to PayPal...
+                  Processing PayPal payment...
                 </h3>
                 <p className="text-gray-500 text-sm">
-                  Please wait while we redirect you to PayPal
+                  Please wait while we confirm your payment
                 </p>
               </div>
             )}

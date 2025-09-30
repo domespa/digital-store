@@ -1,8 +1,6 @@
 import { Request, Response } from "express";
 import { InventoryService } from "../services/inventoryService";
-import { PrismaClient } from "../generated/prisma";
-
-const prisma = new PrismaClient();
+import { prisma } from "../utils/prisma";
 
 export class InventoryController {
   static async getInventoryStats(req: Request, res: Response) {

@@ -1,5 +1,4 @@
-import { Router } from "express";
-import { PrismaClient } from "../generated/prisma";
+import { Router, Request, Response } from "express";
 import {
   createProduct,
   updateProduct,
@@ -12,9 +11,10 @@ import {
 } from "../controllers/orderController";
 import { requireAuthenticatedAdmin } from "../middleware/auth";
 import WebSocketService from "../services/websocketService";
+import { AnalyticsService } from "../services/analyticsService";
+import { prisma } from "../utils/prisma";
 
 const router = Router();
-const prisma = new PrismaClient();
 
 declare global {
   namespace NodeJS {
@@ -344,5 +344,102 @@ router.get("/websocket/stats", async (req, res) => {
     });
   }
 });
+
+// ================================
+//   RECENT ACTIVITY
+// ================================
+// Ordini più recenti
+// GET /api/admin/dashboard/recent-activity
+router.get(
+  "/dashboard/recent-activity",
+  requireAuthenticatedAdmin,
+  async (req: Request, res: Response) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 15;
+
+      const recentOrders = await AnalyticsService.getRecentOrders(limit);
+
+      const activities = recentOrders.map((order) => {
+        let statusEmoji = "📦";
+        let actionText = "placed";
+
+        if (order.status === "COMPLETED") {
+          statusEmoji = "✅";
+          actionText = "completed";
+        } else if (order.status === "PAID") {
+          statusEmoji = "💳";
+          actionText = "paid for";
+        } else if (order.status === "PENDING") {
+          statusEmoji = "⏳";
+          actionText = "placed";
+        } else if (order.status === "FAILED") {
+          statusEmoji = "❌";
+          actionText = "failed";
+        } else if (order.status === "REFUNDED") {
+          statusEmoji = "↩️";
+          actionText = "refunded";
+        }
+
+        const currencySymbol =
+          order.currency === "EUR"
+            ? "€"
+            : order.currency === "USD"
+            ? "$"
+            : order.currency === "GBP"
+            ? "£"
+            : order.currency;
+
+        const message = `${statusEmoji} ${
+          order.customerName
+        } ${actionText} an order of ${currencySymbol}${order.total.toFixed(
+          2
+        )} (${order.itemCount} item${order.itemCount !== 1 ? "s" : ""})`;
+
+        return {
+          id: order.id,
+          type: "order" as const,
+          message,
+          timestamp: order.createdAt.toISOString(),
+          metadata: {
+            orderId: order.id,
+            status: order.status,
+            total: order.total,
+            currency: order.currency,
+            items: order.itemCount,
+            customerName: order.customerName,
+          },
+        };
+      });
+
+      const summary = {
+        total: activities.length,
+        byStatus: {
+          completed: activities.filter((a) => a.metadata.status === "COMPLETED")
+            .length,
+          paid: activities.filter((a) => a.metadata.status === "PAID").length,
+          pending: activities.filter((a) => a.metadata.status === "PENDING")
+            .length,
+          failed: activities.filter((a) => a.metadata.status === "FAILED")
+            .length,
+          refunded: activities.filter((a) => a.metadata.status === "REFUNDED")
+            .length,
+        },
+      };
+
+      res.json({
+        success: true,
+        activities,
+        summary,
+      });
+    } catch (error) {
+      console.error("Error fetching recent activity:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to fetch recent activity",
+        message: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  }
+);
 
 export default router;

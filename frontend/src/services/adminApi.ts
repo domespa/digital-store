@@ -51,6 +51,21 @@ interface UnreadCountUpdate {
   count: number;
 }
 
+export interface RecentActivity {
+  id: string;
+  type: "order";
+  message: string;
+  timestamp: string;
+  metadata: {
+    orderId: string;
+    status: string;
+    total: number;
+    currency: string;
+    items: number;
+    customerName: string;
+  };
+}
+
 // ========================
 //   ANALYTICS TYPES
 // ========================
@@ -170,6 +185,28 @@ export const adminDashboard = {
   getRealtime: async (): Promise<any> => {
     const response = await adminApiInstance.get("/admin/analytics/realtime");
     return response.data.data;
+  },
+
+  getRecentActivity: async (
+    limit: number = 15
+  ): Promise<{
+    success: boolean;
+    activities: RecentActivity[];
+    summary: {
+      total: number;
+      byStatus: {
+        completed: number;
+        paid: number;
+        pending: number;
+        failed: number;
+        refunded: number;
+      };
+    };
+  }> => {
+    const response = await adminApiInstance.get(
+      `/admin/dashboard/recent-activity?limit=${limit}`
+    );
+    return response.data;
   },
 };
 
@@ -485,6 +522,7 @@ export const adminApi = {
   logout: adminAuth.logout,
   getProfile: adminAuth.getProfile,
   convertTimePeriod: convertTimePeriodToApiPeriod,
+  getRecentActivity: adminDashboard.getRecentActivity,
 };
 
 export default adminApi;

@@ -1,5 +1,4 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "../generated/prisma";
 import { catchAsync } from "../utils/catchAsync";
 import { CustomError } from "../utils/customError";
 import { stripe } from "../services/stripe";
@@ -7,12 +6,9 @@ import { paypalService } from "../services/paypal";
 import EmailService from "../services/emailService";
 const emailService = new EmailService();
 import { formatOrderResponse } from "../controllers/orderController";
-
-const prisma = new PrismaClient();
+import { prisma } from "../utils/prisma";
 
 export class PaymentController {
-  // STRIPE
-  // POST /api/payments/webhook/stripe
   static stripeWebhook = catchAsync(async (req: Request, res: Response) => {
     const sig = req.headers["stripe-signature"] as string;
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -70,8 +66,7 @@ export class PaymentController {
       });
     }
   });
-  // PAYPAL
-  // POST /api/payments/webhook/paypal
+
   static paypalWebhook = catchAsync(async (req: Request, res: Response) => {
     const event = req.body;
 
@@ -104,18 +99,15 @@ export class PaymentController {
       });
     }
   });
-  // PRENDI PAGAMENTO
-  // POST /api/payments/capture/:orderId
+
   static capturePayPalPayment = catchAsync(
     async (req: Request, res: Response) => {
       const { orderId } = req.params;
 
-      // VALIDAZIONE
       if (!orderId || !/^[a-zA-Z0-9-]+$/.test(orderId)) {
         throw new CustomError("Invalid order ID format", 400);
       }
 
-      // TROVA ORDINE
       const order = await prisma.order.findUnique({
         where: { id: orderId },
         include: {
@@ -160,13 +152,11 @@ export class PaymentController {
       }
 
       try {
-        // CATTURA PAYPAL
         const captureResult = await paypalService.captureOrder(
           order.paypalOrderId
         );
 
         if (captureResult.status === "COMPLETED") {
-          // INVIALO AL DB
           const updatedOrder = await prisma.order.update({
             where: { id: orderId },
             data: {
@@ -203,7 +193,6 @@ export class PaymentController {
             req.user?.role === "ADMIN"
           );
 
-          // INVIO EMAIL DI CONFERMA
           try {
             await emailService.sendOrderStatusUpdate(orderResponse, "PENDING");
             console.log(
@@ -227,7 +216,6 @@ export class PaymentController {
       } catch (error) {
         console.error("PayPal capture error:", error);
 
-        // ORDINE NON ANDATO A BUONFINE
         await prisma.order.update({
           where: { id: orderId },
           data: {
@@ -240,13 +228,11 @@ export class PaymentController {
       }
     }
   );
-  // RIMBORSO
-  // POST /api/payments/refund/:orderId
+
   static refundPayment = catchAsync(async (req: Request, res: Response) => {
     const { orderId } = req.params;
     const { amount, reason } = req.body;
 
-    // SOLO IO
     if (req.user?.role !== "ADMIN") {
       throw new CustomError("Admin access required", 403);
     }
@@ -297,10 +283,9 @@ export class PaymentController {
     const refundAmount = amount || order.total.toNumber();
 
     try {
-      let refundResult;
+      let refundResult: any;
 
       if (order.stripePaymentIntentId) {
-        // RIMBORSO VIA STRIPE
         refundResult = await stripe.refunds.create({
           payment_intent: order.stripePaymentIntentId,
           amount: Math.round(refundAmount * 100),
@@ -313,18 +298,25 @@ export class PaymentController {
 
         console.log(`Stripe refund created: ${refundResult.id}`);
       } else if (order.paypalOrderId) {
-        // Per PayPal, dovresti implementare l'API dei rimborsi
-        // Qui un esempio semplificato
-        console.log(
-          `PayPal refund requested for order: ${order.paypalOrderId}`
+        const captureId = await PaymentController.getPayPalCaptureId(
+          order.paypalOrderId
         );
-        // TODO: Implementare PayPal refund API
-        throw new CustomError("PayPal refunds not yet implemented", 501);
+
+        if (!captureId) {
+          throw new CustomError("PayPal capture ID not found", 400);
+        }
+
+        refundResult = await PaymentController.createPayPalRefund(
+          captureId,
+          refundAmount,
+          order.currency
+        );
+
+        console.log(`PayPal refund created: ${refundResult.id}`);
       } else {
         throw new CustomError("No payment method found for refund", 400);
       }
 
-      // AGGIORNA ORDINE
       const updatedOrder = await prisma.order.update({
         where: { id: orderId },
         data: {
@@ -358,7 +350,6 @@ export class PaymentController {
 
       const orderResponse = formatOrderResponse(updatedOrder, true);
 
-      // INVIA EMAIL DI RIMBORSO
       try {
         await emailService.sendOrderStatusUpdate(orderResponse, "PAID");
         console.log(`Refund notification email sent for order: ${orderId}`);
@@ -378,8 +369,7 @@ export class PaymentController {
       throw new CustomError("Refund processing failed", 500);
     }
   });
-  // STATO PAGAMENTO
-  // GET /api/payments/status/:orderId
+
   static getPaymentStatus = catchAsync(async (req: Request, res: Response) => {
     const { orderId } = req.params;
 
@@ -451,8 +441,6 @@ export class PaymentController {
       },
     });
   });
-
-  // ============== HANDLER PRIVATI ==============
 
   private static async handleStripePaymentSucceeded(paymentIntent: any) {
     const order = await prisma.order.findFirst({
@@ -579,20 +567,57 @@ export class PaymentController {
 
   private static async handleStripeDispute(charge: any) {
     console.log(`Dispute created for charge: ${charge.id}`);
-    // TODO: Implementare gestione dispute
-    // Potresti voler bloccare l'accesso ai file o notificare gli admin
+
+    const paymentIntent = charge.payment_intent;
+
+    if (!paymentIntent) {
+      console.error("No payment intent found in dispute");
+      return;
+    }
+
+    const order = await prisma.order.findFirst({
+      where: { stripePaymentIntentId: paymentIntent },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
+      },
+    });
+
+    if (!order) {
+      console.error(`Order not found for payment intent: ${paymentIntent}`);
+      return;
+    }
+
+    await prisma.order.update({
+      where: { id: order.id },
+      data: {
+        status: "DISPUTED",
+      },
+    });
+
+    console.log(`Order ${order.id} marked as disputed`);
   }
 
   private static async handlePayPalOrderApproved(resource: any) {
     console.log(`PayPal order approved: ${resource.id}`);
-    // L'ordine è stato approvato ma non ancora catturato
-    // Non aggiorniamo lo stato qui, aspettiamo la cattura
   }
 
   private static async handlePayPalCaptureCompleted(resource: any) {
-    // Trova l'ordine tramite PayPal order ID
+    const paypalOrderId = resource.supplementary_data?.related_ids?.order_id;
+
+    if (!paypalOrderId) {
+      console.error("PayPal order ID not found in capture webhook:", resource);
+      return;
+    }
+
     const order = await prisma.order.findFirst({
-      where: { paypalOrderId: resource.id },
+      where: { paypalOrderId: paypalOrderId },
       include: {
         orderItems: {
           include: {
@@ -619,7 +644,7 @@ export class PaymentController {
     });
 
     if (!order) {
-      console.error(`Order not found for PayPal order: ${resource.id}`);
+      console.error(`Order not found for PayPal order: ${paypalOrderId}`);
       return;
     }
 
@@ -672,12 +697,15 @@ export class PaymentController {
   }
 
   private static async handlePayPalCaptureFailed(resource: any) {
+    const paypalOrderId =
+      resource.supplementary_data?.related_ids?.order_id || resource.id;
+
     const order = await prisma.order.findFirst({
-      where: { paypalOrderId: resource.id },
+      where: { paypalOrderId: paypalOrderId },
     });
 
     if (!order) {
-      console.error(`Order not found for PayPal order: ${resource.id}`);
+      console.error(`Order not found for PayPal order: ${paypalOrderId}`);
       return;
     }
 
@@ -690,5 +718,57 @@ export class PaymentController {
     });
 
     console.log(`PayPal payment failed for order: ${order.id}`);
+  }
+
+  private static async getPayPalCaptureId(
+    paypalOrderId: string
+  ): Promise<string | null> {
+    try {
+      const orderDetails = await paypalService.getOrderDetails(paypalOrderId);
+
+      const capture = orderDetails.purchase_units?.[0]?.payments?.captures?.[0];
+      return capture?.id || null;
+    } catch (error) {
+      console.error("Error getting PayPal capture ID:", error);
+      return null;
+    }
+  }
+
+  private static async createPayPalRefund(
+    captureId: string,
+    amount: number,
+    currency: string
+  ): Promise<any> {
+    const token = await (paypalService as any).getAccessToken();
+    const headers = {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    };
+
+    const baseURL =
+      process.env.PAYPAL_ENVIRONMENT === "production"
+        ? "https://api-m.paypal.com"
+        : "https://api-m.sandbox.paypal.com";
+
+    const response = await fetch(
+      `${baseURL}/v2/payments/captures/${captureId}/refund`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          amount: {
+            value: amount.toFixed(2),
+            currency_code: currency,
+          },
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(`PayPal refund failed: ${JSON.stringify(error)}`);
+    }
+
+    return await response.json();
   }
 }

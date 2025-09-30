@@ -1,9 +1,8 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
-import { PrismaClient, UserRole } from "../generated/prisma";
-import { JwtPayload, AuthError, UserProfile } from "../types/auth";
-
-const prisma = new PrismaClient();
+import { UserRole } from "../generated/prisma";
+import { JwtPayload, UserProfile } from "../types/auth";
+import { prisma } from "../utils/prisma";
 
 // ===========================================
 //            GLOBAL DECLARATIONS

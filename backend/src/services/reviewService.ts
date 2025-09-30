@@ -6,24 +6,13 @@ import {
   AdminUpdateReviewRequest,
   ReviewFilters,
   ReviewListQuery,
-  ReviewStats,
-  ProductReviewStats,
   CreateReportRequest,
-  HandleReportRequest,
   ModerationAction,
-  ReportReason,
-  ReportStatus,
-  ReviewAnalytics,
-  BulkReviewOperation,
   GuestReviewData,
   ReviewError,
-  ModerationError,
 } from "../types/review";
-import { UserProfile } from "../types/auth";
-import { CustomError } from "../utils/customError";
 import { profanityFilter } from "../utils/profanityFilter";
-
-const prisma = new PrismaClient();
+import { prisma } from "../utils/prisma";
 
 // TIPO PER TRANSAZIONI PRISMA
 type PrismaTransaction = Omit<

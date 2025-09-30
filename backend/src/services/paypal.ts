@@ -1,9 +1,5 @@
 import axios, { AxiosResponse } from "axios";
 
-// ===========================================
-//               TYPES & INTERFACES
-// ===========================================
-
 interface PayPalTokenResponse {
   scope: string;
   access_token: string;
@@ -26,10 +22,22 @@ interface PayPalItem {
   category?: "DIGITAL_GOODS" | "PHYSICAL_GOODS";
 }
 
+interface PayPalCapture {
+  id: string;
+  status: string;
+  amount: PayPalAmount;
+  final_capture: boolean;
+  create_time: string;
+  update_time: string;
+}
+
 interface PayPalPurchaseUnit {
   reference_id?: string;
   amount: PayPalAmount;
   items?: PayPalItem[];
+  payments?: {
+    captures?: PayPalCapture[];
+  };
 }
 
 interface PayPalApplicationContext {
@@ -64,6 +72,13 @@ interface PayPalOrderResponse {
     href: string;
     rel: string;
     method: string;
+  }>;
+  purchase_units?: Array<{
+    reference_id?: string;
+    amount: PayPalAmount;
+    payments?: {
+      captures?: PayPalCapture[];
+    };
   }>;
 }
 
@@ -101,10 +116,6 @@ export class PayPalService {
   private tokenExpiry: number = 0;
 
   constructor() {
-    // ===========================================
-    //              INITIALIZATION
-    // ===========================================
-
     // VALIDAZIONE VARIABILI AMBIENTE
     this.clientId = process.env.PAYPAL_CLIENT_ID || "";
     this.clientSecret = process.env.PAYPAL_CLIENT_SECRET || "";
@@ -125,7 +136,7 @@ export class PayPalService {
   // ===========================================
 
   // OTTIENI ACCESS TOKEN CON CACHE
-  private async getAccessToken(): Promise<string> {
+  async getAccessToken(): Promise<string> {
     // USA TOKEN CACHED SE ANCORA VALIDO
     if (this.accessToken && Date.now() < this.tokenExpiry) {
       return this.accessToken;
@@ -148,7 +159,7 @@ export class PayPalService {
       );
 
       this.accessToken = response.data.access_token;
-      this.tokenExpiry = Date.now() + response.data.expires_in * 1000 - 60000; // -1MIN DI BUFFER
+      this.tokenExpiry = Date.now() + response.data.expires_in * 1000 - 60000;
 
       console.log("PayPal access token obtained");
       return this.accessToken;
@@ -226,7 +237,7 @@ export class PayPalService {
           return_url: `${process.env.FRONTEND_URL}/payment/success?provider=paypal`,
           cancel_url: `${process.env.FRONTEND_URL}/payment/cancel?provider=paypal`,
           brand_name: process.env.BRAND_NAME || "Digital Store",
-          locale: "it_IT",
+          locale: "it-IT",
           landing_page: "NO_PREFERENCE",
           shipping_preference: "NO_SHIPPING",
           user_action: "PAY_NOW",

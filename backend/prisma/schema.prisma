@@ -695,6 +695,7 @@ enum OrderStatus {
   COMPLETED
   FAILED
   REFUNDED
+  DISPUTED
 }
 
 enum PaymentProvider {

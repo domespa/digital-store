@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { PrismaClient, Prisma } from "../generated/prisma";
+import { Prisma } from "../generated/prisma";
 import { currencyService } from "../services/currencyService";
 import {
   CreateProductRequest,
@@ -7,12 +7,9 @@ import {
   ProductListResponse,
   ProductDetailResponse,
   ProductMutationResponse,
-  PublicProductResponse,
   ProductResponse,
-  ProductFilters,
 } from "../types/product";
-
-const prisma = new PrismaClient();
+import { prisma } from "../utils/prisma";
 
 declare global {
   namespace Express {

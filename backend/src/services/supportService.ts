@@ -5,7 +5,6 @@ import {
   TicketCategory,
   SupportRole,
   BusinessModel,
-  User,
 } from "../generated/prisma";
 import {
   CreateTicketRequest,
@@ -21,13 +20,13 @@ import {
   SupportErrorCodes,
   SubmitSatisfactionRequest,
   SupportWebSocketEvent,
-  ApiResponse,
   SupportMessageResponse,
 } from "../types/support";
 import NotificationService from "../services/notificationService";
 import EmailService from "../services/emailService";
 import WebSocketService from "../services/websocketService";
 import { FileUploadService } from "../services/uploadService";
+import { NotificationType as PrismaNotificationType } from "../generated/prisma";
 
 export class SupportService {
   constructor(
@@ -86,7 +85,7 @@ export class SupportService {
       rateLimits: {
         ticketsPerHour: config.maxTicketsPerHour,
         ticketsPerDay: config.maxTicketsPerDay,
-        maxConcurrentTickets: 10, // From agent config
+        maxConcurrentTickets: 10,
       },
     };
   }
@@ -99,18 +98,14 @@ export class SupportService {
     businessModel: BusinessModel,
     tenantId: string | null = null
   ): Promise<TicketResponse> {
-    // Get configuration
     const config = await this.getBusinessModelConfig(businessModel, tenantId);
 
-    // Check rate limits
     await this.checkRateLimits(userId, config);
 
-    // Generate ticket number
     const ticketNumber = await this.generateTicketNumber();
 
-    // Create ticket with transaction
     const ticket = await this.prisma.$transaction(async (tx) => {
-      // Create ticket
+      // CREA TICKET
       const newTicket = await tx.supportTicket.create({
         data: {
           ticketNumber,
@@ -132,7 +127,6 @@ export class SupportService {
         },
       });
 
-      // Create SLA tracking if enabled
       if (config.slaTracking) {
         const slaMinutes =
           config.slaDefaults[
@@ -144,14 +138,13 @@ export class SupportService {
           data: {
             ticketId: newTicket.id,
             firstResponseSLA: slaMinutes,
-            resolutionSLA: slaMinutes * 4, // Resolution is 4x response time
+            resolutionSLA: slaMinutes * 4,
             firstResponseDue: new Date(now.getTime() + slaMinutes * 60000),
             resolutionDue: new Date(now.getTime() + slaMinutes * 4 * 60000),
           },
         });
       }
 
-      // Handle attachments
       if (request.attachments && request.attachments.length > 0) {
         for (const file of request.attachments) {
           const uploadResult = await this.uploadService.uploadDigitalFile(
@@ -163,7 +156,7 @@ export class SupportService {
 
           await tx.supportAttachment.create({
             data: {
-              filename: uploadResult.id, // Usa l'id come filename
+              filename: uploadResult.id,
               originalName: file.originalname,
               mimeType: file.mimetype,
               size: file.size,
@@ -175,7 +168,6 @@ export class SupportService {
         }
       }
 
-      // Auto-assign if enabled
       if (config.autoAssignment) {
         const assignee = await this.findBestAgent(
           newTicket.category,
@@ -193,11 +185,9 @@ export class SupportService {
       return newTicket;
     });
 
-    // Send notifications
     await this.sendTicketNotifications("created", ticket.id);
 
-    // Emit real-time event
-    this.emitWebSocketEvent({
+    await this.emitWebSocketEvent({
       type: "ticket_created",
       ticketId: ticket.id,
       data: { ticketNumber: ticket.ticketNumber },
@@ -212,13 +202,11 @@ export class SupportService {
     request: UpdateTicketRequest,
     userId: string
   ): Promise<TicketResponse> {
-    // Check permissions
     const existingTicket = await this.getTicketWithPermissions(
       ticketId,
       userId
     );
 
-    // Validate status transition
     if (request.status && request.status !== existingTicket.status) {
       await this.validateStatusTransition(
         existingTicket.status,
@@ -238,16 +226,13 @@ export class SupportService {
       },
     });
 
-    // Update SLA if priority changed
     if (request.priority && request.priority !== existingTicket.priority) {
       await this.updateSLAForPriorityChange(ticketId, request.priority);
     }
 
-    // Send notifications
     await this.sendTicketNotifications("updated", ticketId);
 
-    // Emit real-time event
-    this.emitWebSocketEvent({
+    await this.emitWebSocketEvent({
       type: "ticket_updated",
       ticketId: ticketId,
       data: { changes: request },
@@ -269,7 +254,6 @@ export class SupportService {
           { userId },
           { assignedToId: userId },
           { vendorId: userId },
-          // Platform admin can see all
           { user: { supportAgent: { role: SupportRole.PLATFORM_ADMIN } } },
         ],
       },
@@ -341,7 +325,6 @@ export class SupportService {
       throw new Error(SupportErrorCodes.TICKET_NOT_FOUND);
     }
 
-    // Transform to response format
     return this.transformTicketToResponse(ticket);
   }
 
@@ -354,11 +337,9 @@ export class SupportService {
     const { page = 1, limit = 20 } = pagination;
     const skip = (page - 1) * limit;
 
-    // Build where clause based on user permissions
     const userPermissions = await this.getUserPermissions(userId);
     const whereClause = this.buildWhereClause(filters, userPermissions, userId);
 
-    // Get tickets
     const [tickets, total] = await Promise.all([
       this.prisma.supportTicket.findMany({
         where: whereClause,
@@ -418,11 +399,11 @@ export class SupportService {
     userId: string,
     request: CreateMessageRequest
   ): Promise<void> {
-    // Check permissions
+    // CONTROLLA PERMESSI
     await this.getTicketWithPermissions(ticketId, userId);
 
     await this.prisma.$transaction(async (tx) => {
-      // Create message
+      // CREA MESSAGG
       const message = await tx.supportMessage.create({
         data: {
           content: request.content,
@@ -431,8 +412,6 @@ export class SupportService {
           authorId: userId,
         },
       });
-
-      // Handle attachments
       if (request.attachments && request.attachments.length > 0) {
         for (const file of request.attachments) {
           const uploadResult = await this.uploadService.uploadDigitalFile(
@@ -456,7 +435,6 @@ export class SupportService {
         }
       }
 
-      // Update ticket last response time
       const updateData: {
         lastResponseAt: Date;
         updatedAt: Date;
@@ -466,7 +444,6 @@ export class SupportService {
         updatedAt: new Date(),
       };
 
-      // If this is the first response from support, update firstResponseAt
       const ticket = await tx.supportTicket.findUnique({
         where: { id: ticketId },
         include: { assignedTo: true },
@@ -475,7 +452,6 @@ export class SupportService {
       if (!ticket?.firstResponseAt && ticket?.assignedToId === userId) {
         updateData.firstResponseAt = new Date();
 
-        // Update SLA
         await tx.supportSLA.updateMany({
           where: { ticketId },
           data: { firstResponseMet: true },
@@ -488,11 +464,9 @@ export class SupportService {
       });
     });
 
-    // Send notifications
     await this.sendMessageNotifications(ticketId, userId);
 
-    // Emit real-time event
-    this.emitWebSocketEvent({
+    await this.emitWebSocketEvent({
       type: "message_created",
       ticketId,
       data: { content: request.content },
@@ -518,7 +492,6 @@ export class SupportService {
       throw new Error(SupportErrorCodes.ESCALATION_NOT_ALLOWED);
     }
 
-    // Find escalation target
     const escalationTarget =
       request.escalateTo ||
       (await this.findEscalationTarget(ticket.businessModel, ticket.tenantId));
@@ -528,7 +501,6 @@ export class SupportService {
     }
 
     await this.prisma.$transaction(async (tx) => {
-      // Update ticket
       await tx.supportTicket.update({
         where: { id: ticketId },
         data: {
@@ -541,7 +513,6 @@ export class SupportService {
         },
       });
 
-      // Add escalation message
       if (request.addMessage) {
         await tx.supportMessage.create({
           data: {
@@ -554,11 +525,9 @@ export class SupportService {
       }
     });
 
-    // Send notifications
     await this.sendEscalationNotifications(ticketId, escalationTarget);
 
-    // Emit real-time event
-    this.emitWebSocketEvent({
+    await this.emitWebSocketEvent({
       type: "escalation",
       ticketId,
       data: { reason: request.reason },
@@ -576,10 +545,8 @@ export class SupportService {
     assigneeId: string,
     assignerId: string
   ): Promise<TicketResponse> {
-    // Check permissions
     await this.getTicketWithPermissions(ticketId, assignerId);
 
-    // Check if assignee is available
     const agent = await this.prisma.supportAgent.findFirst({
       where: {
         userId: assigneeId,
@@ -595,7 +562,6 @@ export class SupportService {
       throw new Error(SupportErrorCodes.AGENT_NOT_AVAILABLE);
     }
 
-    // Check current workload
     const currentTickets = await this.prisma.supportTicket.count({
       where: {
         assignedToId: assigneeId,
@@ -613,7 +579,6 @@ export class SupportService {
       throw new Error(SupportErrorCodes.AGENT_NOT_AVAILABLE);
     }
 
-    // Assign ticket
     await this.prisma.supportTicket.update({
       where: { id: ticketId },
       data: {
@@ -623,11 +588,9 @@ export class SupportService {
       },
     });
 
-    // Send notifications
     await this.sendAssignmentNotifications(ticketId, assigneeId);
 
-    // Emit real-time event
-    this.emitWebSocketEvent({
+    await this.emitWebSocketEvent({
       type: "ticket_assigned",
       ticketId,
       data: {
@@ -648,7 +611,6 @@ export class SupportService {
     userId: string,
     request: SubmitSatisfactionRequest
   ): Promise<void> {
-    // Check if ticket belongs to user and is resolved/closed
     const ticket = await this.prisma.supportTicket.findFirst({
       where: {
         id: ticketId,
@@ -661,7 +623,6 @@ export class SupportService {
       throw new Error(SupportErrorCodes.TICKET_NOT_FOUND);
     }
 
-    // Check if satisfaction already submitted
     const existingSatisfaction =
       await this.prisma.supportSatisfaction.findUnique({
         where: { ticketId },
@@ -671,7 +632,6 @@ export class SupportService {
       throw new Error(SupportErrorCodes.SATISFACTION_ALREADY_SUBMITTED);
     }
 
-    // Create satisfaction record
     await this.prisma.supportSatisfaction.create({
       data: {
         ticketId,
@@ -684,12 +644,10 @@ export class SupportService {
       },
     });
 
-    // Update agent metrics
     if (ticket.assignedToId) {
       await this.updateAgentSatisfactionMetrics(ticket.assignedToId);
     }
 
-    // Send notification to support team
     await this.sendSatisfactionNotifications(ticketId, request.rating);
   }
 
@@ -781,7 +739,6 @@ export class SupportService {
 
     if (agents.length === 0) return null;
 
-    // Find agent with least current tickets
     return agents.reduce((best, current) => {
       const currentLoad = current.user.assignedTickets.length;
       const bestLoad = best.user.assignedTickets.length;
@@ -823,7 +780,6 @@ export class SupportService {
     to: TicketStatus,
     userId: string
   ): Promise<void> {
-    // Define valid transitions
     const validTransitions: Record<TicketStatus, TicketStatus[]> = {
       [TicketStatus.OPEN]: [TicketStatus.IN_PROGRESS, TicketStatus.CLOSED],
       [TicketStatus.IN_PROGRESS]: [
@@ -892,7 +848,7 @@ export class SupportService {
       order: ticket.order
         ? {
             id: ticket.order.id,
-            orderNumber: ticket.order.id, // Usa l'id come orderNumber
+            orderNumber: ticket.order.id,
           }
         : undefined,
 
@@ -1007,10 +963,9 @@ export class SupportService {
 
       if (!ticket) return;
 
-      // Send notification to ticket owner
       if (event === "created") {
         await this.notificationService.createNotificationFromTemplate(
-          "SUPPORT_TICKET_CREATED" as any,
+          PrismaNotificationType.SUPPORT_TICKET_CREATED,
           ticket.userId,
           {
             ticketNumber: ticket.ticketNumber,
@@ -1019,7 +974,6 @@ export class SupportService {
           }
         );
 
-        // Send email notification
         await this.emailService.sendEmail({
           to: ticket.user.email,
           subject: `Support Ticket Created - ${ticket.ticketNumber}`,
@@ -1034,10 +988,9 @@ export class SupportService {
         });
       }
 
-      // Send notification to assigned agent
       if (ticket.assignedToId && event === "assigned") {
         await this.notificationService.createNotificationFromTemplate(
-          "SUPPORT_TICKET_ASSIGNED" as any,
+          PrismaNotificationType.SUPPORT_TICKET_ASSIGNED,
           ticket.assignedToId,
           {
             ticketNumber: ticket.ticketNumber,
@@ -1066,10 +1019,9 @@ export class SupportService {
 
       if (!ticket) return;
 
-      // Notify ticket owner if message is from agent
       if (authorId !== ticket.userId && ticket.userId) {
         await this.notificationService.createNotificationFromTemplate(
-          "SUPPORT_MESSAGE_RECEIVED" as any,
+          PrismaNotificationType.SUPPORT_MESSAGE_RECEIVED,
           ticket.userId,
           {
             ticketNumber: ticket.ticketNumber,
@@ -1078,10 +1030,9 @@ export class SupportService {
         );
       }
 
-      // Notify assigned agent if message is from user
       if (authorId !== ticket.assignedToId && ticket.assignedToId) {
         await this.notificationService.createNotificationFromTemplate(
-          "SUPPORT_MESSAGE_RECEIVED" as any,
+          PrismaNotificationType.SUPPORT_TICKET_ASSIGNED,
           ticket.assignedToId,
           {
             ticketNumber: ticket.ticketNumber,
@@ -1106,7 +1057,7 @@ export class SupportService {
       if (!ticket) return;
 
       await this.notificationService.createNotificationFromTemplate(
-        "SUPPORT_TICKET_ESCALATED" as any,
+        PrismaNotificationType.SUPPORT_TICKET_ESCALATED,
         targetId,
         {
           ticketNumber: ticket.ticketNumber,
@@ -1135,7 +1086,7 @@ export class SupportService {
       if (!ticket || !ticket.assignedTo) return;
 
       await this.notificationService.createNotificationFromTemplate(
-        "SUPPORT_TICKET_ASSIGNED" as any,
+        PrismaNotificationType.SUPPORT_TICKET_ASSIGNED,
         assigneeId,
         {
           ticketNumber: ticket.ticketNumber,
@@ -1144,7 +1095,6 @@ export class SupportService {
         }
       );
 
-      // Send email notification
       await this.emailService.sendEmail({
         to: ticket.assignedTo.email,
         subject: `Support Ticket Assigned - ${ticket.ticketNumber}`,
@@ -1176,10 +1126,9 @@ export class SupportService {
 
       if (!ticket) return;
 
-      // Notify assigned agent about satisfaction rating
       if (ticket.assignedToId) {
         await this.notificationService.createNotificationFromTemplate(
-          "SUPPORT_SATISFACTION_SUBMITTED" as any,
+          PrismaNotificationType.SUPPORT_SATISFACTION_SUBMITTED,
           ticket.assignedToId,
           {
             ticketNumber: ticket.ticketNumber,
@@ -1193,10 +1142,11 @@ export class SupportService {
     }
   }
 
-  private emitWebSocketEvent(event: SupportWebSocketEvent): void {
+  private async emitWebSocketEvent(
+    event: SupportWebSocketEvent
+  ): Promise<void> {
     try {
-      // Fix: Usa il metodo corretto del tuo WebSocketService
-      this.websocketService.sendNotificationToChannel("support", {
+      await this.websocketService.sendNotificationToChannel("support", {
         id: event.ticketId,
         type: event.type as any,
         title: `Support: ${event.type}`,
@@ -1213,7 +1163,7 @@ export class SupportService {
   private async getUserPermissions(userId: string): Promise<{
     role: SupportRole;
     businessModel?: BusinessModel;
-    tenantId?: string; // ✅ Cambiato da string | null a string | undefined
+    tenantId?: string;
   }> {
     const agent = await this.prisma.supportAgent.findFirst({
       where: { userId },
@@ -1237,7 +1187,6 @@ export class SupportService {
   ): Record<string, any> {
     const where: Record<string, any> = {};
 
-    // Permission-based filtering
     if (permissions.role === SupportRole.USER) {
       where.userId = userId;
     } else if (permissions.role === SupportRole.ADMIN) {
@@ -1251,7 +1200,6 @@ export class SupportService {
       ];
     }
 
-    // Apply filters
     if (filters.status?.length) where.status = { in: filters.status };
     if (filters.priority?.length) where.priority = { in: filters.priority };
     if (filters.category?.length) where.category = { in: filters.category };
@@ -1260,14 +1208,12 @@ export class SupportService {
     if (filters.businessModel) where.businessModel = filters.businessModel;
     if (filters.tenantId) where.tenantId = filters.tenantId;
 
-    // Date filters
     if (filters.createdFrom || filters.createdTo) {
       where.createdAt = {};
       if (filters.createdFrom) where.createdAt.gte = filters.createdFrom;
       if (filters.createdTo) where.createdAt.lte = filters.createdTo;
     }
 
-    // Text search
     if (filters.search) {
       where.OR = [
         { subject: { contains: filters.search, mode: "insensitive" } },
@@ -1281,7 +1227,6 @@ export class SupportService {
 
   private async updateAgentSatisfactionMetrics(agentId: string): Promise<void> {
     try {
-      // Calculate average satisfaction for agent
       const avgSatisfaction = await this.prisma.supportSatisfaction.aggregate({
         where: {
           ticket: { assignedToId: agentId },
@@ -1321,7 +1266,6 @@ export class SupportService {
           newPriority.toLowerCase() as keyof typeof config.slaDefaults
         ];
 
-      // Recalculate SLA times based on ticket creation time
       const createdAt = ticket.createdAt;
       const newFirstResponseDue = new Date(
         createdAt.getTime() + newSlaMinutes * 60000
@@ -1348,7 +1292,6 @@ export class SupportService {
     businessModel: BusinessModel,
     tenantId: string | null = null
   ): Promise<string | null> {
-    // Define escalation hierarchy by business model
     const escalationHierarchy = {
       [BusinessModel.B2B_SALE]: [
         SupportRole.VENDOR,
@@ -1411,7 +1354,6 @@ export class SupportService {
 
   async markMessageAsRead(messageId: string, userId: string): Promise<void> {
     try {
-      // Check if read record already exists
       const existingRead = await this.prisma.supportMessageRead.findUnique({
         where: {
           messageId_userId: {
@@ -1439,7 +1381,6 @@ export class SupportService {
     userId: string,
     includeInternal: boolean = false
   ): Promise<SupportMessageResponse[]> {
-    // Check permissions
     await this.getTicketWithPermissions(ticketId, userId);
 
     const messages = await this.prisma.supportMessage.findMany({
@@ -1509,7 +1450,6 @@ export class SupportService {
   }
 
   async deleteTicket(ticketId: string, userId: string): Promise<void> {
-    // Check permissions - only admin can delete
     const userPermissions = await this.getUserPermissions(userId);
     if (userPermissions.role === SupportRole.USER) {
       throw new Error(SupportErrorCodes.UNAUTHORIZED_ACCESS);
@@ -1517,7 +1457,6 @@ export class SupportService {
 
     await this.getTicketWithPermissions(ticketId, userId);
 
-    // Soft delete by updating status
     await this.prisma.supportTicket.update({
       where: { id: ticketId },
       data: {
@@ -1626,7 +1565,7 @@ export class SupportService {
       return sum + responseTime;
     }, 0);
 
-    return Math.round(totalResponseTime / tickets.length / (1000 * 60)); // Convert to minutes
+    return Math.round(totalResponseTime / tickets.length / (1000 * 60));
   }
 
   private async calculateUserSatisfactionRating(
@@ -1651,13 +1590,11 @@ export class SupportService {
     mimeType: string;
     data: string;
   }> {
-    // Implementation for exporting tickets
     const userPermissions = await this.getUserPermissions(userId);
     if (userPermissions.role === SupportRole.USER) {
       throw new Error(SupportErrorCodes.UNAUTHORIZED_ACCESS);
     }
 
-    // This would typically generate CSV/Excel file
     return {
       filename: `tickets-export-${Date.now()}.${format}`,
       mimeType:

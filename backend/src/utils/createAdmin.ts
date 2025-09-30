@@ -1,7 +1,6 @@
 import bcrypt from "bcryptjs";
-import { PrismaClient, UserRole } from "../generated/prisma";
-
-const prisma = new PrismaClient();
+import { UserRole } from "../generated/prisma";
+import { prisma } from "../utils/prisma";
 
 // ===========================================
 //            ADMIN CREATION SCRIPT

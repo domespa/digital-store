@@ -83,3 +83,66 @@ export const speedLimiter = slowDown({
   maxDelayMs: 20000, // MASSIMO 20 SECONDI
   validate: { delayMs: false },
 });
+
+// ===========================================
+//      NOTIFICATION RATE LIMITS
+// ===========================================
+// NOTIFICHE GENERALI
+export const notificationLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  message: {
+    success: false,
+    error: "Too many notification requests, try again later.",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// ADMIN NOTIFICHE
+export const adminNotificationLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 200,
+  message: {
+    success: false,
+    error: "Too many admin notification requests, try again later.",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// BULK NOTIFICATIONS
+export const bulkNotificationLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  message: {
+    success: false,
+    error: "Too many bulk notification requests, try again in 1 hour.",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// MARK AS READ
+export const markReadLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000,
+  max: 50,
+  message: {
+    success: false,
+    error: "Too many mark read requests, slow down.",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// TEST NOTIFICATIONS ADMIN
+export const testNotificationLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  message: {
+    success: false,
+    error: "Too many test notification requests, try again in 1 hour.",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});

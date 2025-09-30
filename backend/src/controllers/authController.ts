@@ -11,8 +11,8 @@ import {
 } from "../types/auth";
 import EmailService from "../services/emailService";
 import { TokenService } from "../services/tokenService";
+import { prisma } from "../utils/prisma";
 
-const prisma = new PrismaClient();
 const emailService = new EmailService();
 
 // ===========================================
@@ -186,7 +186,7 @@ export const login = async (req: Request, res: Response) => {
       lastName: user.lastName,
       createdAt: user.createdAt,
       role: user.role,
-      emailVerified: user.emailVerified, // Aggiunto campo mancante
+      emailVerified: user.emailVerified,
     };
 
     // GENERA TOKEN

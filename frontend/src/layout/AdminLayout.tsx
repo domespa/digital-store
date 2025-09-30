@@ -86,7 +86,7 @@ export default function AdminLayout({
       {/* SIDEBAR */}
       <div className="fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-lg">
         {/* LOGO */}
-        <div className="flex h-16 items-center justify-center border-b border-gray-200">
+        <div className="flex h-19.5 items-center justify-center border-b border-gray-200">
           <h1 className="text-xl font-bold text-gray-900">Admin Panel</h1>
         </div>
 

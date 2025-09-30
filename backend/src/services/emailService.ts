@@ -22,7 +22,7 @@ const transporter = nodemailer.createTransport({
 });
 
 class EmailService {
-  // Metodo generico per inviare email (necessario per NotificationService)
+  // Metodo generico per inviare email
   async sendEmail(options: EmailOptions): Promise<void> {
     await transporter.sendMail({
       from: options.from || process.env.EMAIL_USER,

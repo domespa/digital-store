@@ -34,7 +34,6 @@ export interface UserOrderItemResponse {
     name: string;
     description: string | null;
     fileName: string | null;
-    // NO filePath per sicurezza - solo admin possono vederlo
   } | null;
 }
 
@@ -65,7 +64,7 @@ export interface AdminOrderItemResponse {
     name: string;
     description: string | null;
     fileName: string | null;
-    filePath: string | null; // Solo admin possono vedere i percorsi dei file
+    filePath: string | null;
   } | null;
 }
 

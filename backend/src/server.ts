@@ -3,7 +3,7 @@ import cors from "cors";
 import helmet from "helmet";
 import dotenv from "dotenv";
 import { createServer } from "http";
-import { PrismaClient } from "./generated/prisma";
+import { prisma } from "./utils/prisma";
 
 // IMPORT SECURITY
 import {
@@ -32,7 +32,7 @@ import reviewRoutes from "./routes/review";
 import wishlistRoutes from "./routes/wishlist";
 import searchRoutes from "./routes/search";
 import analyticsRoutes from "./routes/analytics";
-import { createNotificationRoutesFlexible } from "./routes/notification";
+import { createNotificationRoutes } from "./routes/notification";
 import recommendationRoutes from "./routes/recommendation";
 
 // IMPORT SUPPORT SYSTEM
@@ -50,9 +50,6 @@ import currencyRoutes from "./routes/currency";
 dotenv.config();
 
 console.log("DATABASE_URL at runtime:", process.env.DATABASE_URL);
-
-// INIT PRISMA
-const prisma = new PrismaClient();
 
 // CREO APP EXPRESS
 const app = express();
@@ -181,11 +178,8 @@ app.use("/api/search", searchRoutes);
 // =============== NOTIFICHE (WEBSOCKET) ==============
 //=====================================================
 
-const notificationRoutes = createNotificationRoutesFlexible(
-  httpServer,
-  websocketService
-);
-app.use("/api/notifications", notificationRoutes);
+const notificationRouter = createNotificationRoutes(websocketService);
+app.use("/api/notifications", notificationRouter);
 
 //=====================================================
 // ================ ROUTE AUTENTICATE =================

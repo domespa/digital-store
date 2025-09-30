@@ -3,11 +3,9 @@ import { v2 as cloudinary } from "cloudinary";
 import sharp from "sharp";
 import path from "path";
 import fs from "fs/promises";
-import { PrismaClient } from "../generated/prisma";
 import { CustomError } from "../utils/customError";
 import crypto from "crypto";
-
-const prisma = new PrismaClient();
+import { prisma } from "../utils/prisma";
 
 // ===========================================
 //            CLOUDINARY CONFIGURATION
@@ -66,11 +64,14 @@ export class FileUploadService {
   private static uploadAttempts = new Map<string, number[]>();
   private static downloadAttempts = new Map<string, number[]>();
 
+  // PULIAMO DOPO UN ORA
+  private static lastCleanup = Date.now();
+  private static readonly CLEANUP_INTERVAL = 60 * 60 * 1000; // 1 ora
+
   // ===========================================
   //            INSTANCE METHODS
   // ===========================================
 
-  // UPLOAD FILE DIGITALI COME METODO DI ISTANZA
   async uploadDigitalFile(
     filePath: string,
     originalName: string,
@@ -113,7 +114,6 @@ export class FileUploadService {
     }
   }
 
-  // UPLOAD IMMAGINI COME METODO DI ISTANZA
   async uploadImage(
     filePath: string,
     originalName: string,
@@ -197,13 +197,21 @@ export class FileUploadService {
     return results;
   }
 
-  // UPLOAD MULTIPLO PER GALLERIA
   async uploadProductGallery(
     files: Express.Multer.File[],
     productId: string,
     userId?: string
-  ): Promise<void> {
-    if (files.length === 0) return;
+  ): Promise<
+    Array<{
+      id: string;
+      url: string;
+      altText: string;
+      sortOrder: number;
+      isMain: boolean;
+      createdAt: Date;
+    }>
+  > {
+    if (files.length === 0) return [];
 
     const sanitizedProductId = productId.replace(/[^a-zA-Z0-9-]/g, "");
     if (sanitizedProductId !== productId || productId.length > 36) {
@@ -219,46 +227,44 @@ export class FileUploadService {
     }
 
     const uploadPromises = files.map(async (file, index) => {
-      try {
-        const imageSizes = await this.uploadImage(
-          file.path,
-          file.originalname,
-          `products/${productId}`,
-          userId
-        );
+      const imageSizes = await this.uploadImage(
+        file.path,
+        file.originalname,
+        `products/${productId}`,
+        userId
+      );
 
-        const baseAltText = file.originalname
-          .split(".")[0]
-          .replace(/[^a-zA-Z0-9\s-]/g, "")
-          .substring(0, 100);
+      const baseAltText = file.originalname
+        .split(".")[0]
+        .replace(/[^a-zA-Z0-9\s-]/g, "")
+        .substring(0, 100);
 
-        await prisma.productImage.create({
-          data: {
-            productId,
-            url: imageSizes.large,
-            altText: `${baseAltText} - Image ${index + 1}`,
-            sortOrder: index,
-            isMain: index === 0,
-          },
-        });
+      const createdImage = await prisma.productImage.create({
+        data: {
+          productId,
+          url: imageSizes.large,
+          altText: `${baseAltText} - Image ${index + 1}`,
+          sortOrder: index,
+          isMain: index === 0,
+        },
+      });
 
-        console.log(
-          `Product gallery image uploaded: ${
-            imageSizes.large
-          } for product ${productId} by user ${userId || "anonymous"}`
-        );
-
-        return imageSizes;
-      } catch (error) {
-        console.error(
-          `Failed to upload gallery image ${index} for product ${productId}:`,
-          error
-        );
-        throw new CustomError(`Failed to upload image ${index + 1}`, 500);
-      }
+      console.log(
+        `Product gallery image uploaded: ${
+          imageSizes.large
+        } for product ${productId} by user ${userId || "anonymous"}`
+      );
+      return {
+        id: createdImage.id,
+        url: createdImage.url,
+        altText: createdImage.altText || `Product image ${index + 1}`,
+        sortOrder: createdImage.sortOrder,
+        isMain: createdImage.isMain,
+        createdAt: createdImage.createdAt,
+      };
     });
 
-    await Promise.all(uploadPromises);
+    return await Promise.all(uploadPromises);
   }
 
   // ===========================================
@@ -405,6 +411,10 @@ export class FileUploadService {
     const now = Date.now();
     const windowMs = 15 * 60 * 1000;
     const maxAttempts = 20;
+    if (now - this.lastCleanup > this.CLEANUP_INTERVAL) {
+      this.cleanupRateLimitMaps();
+      this.lastCleanup = now;
+    }
 
     if (!this.uploadAttempts.has(ip)) {
       this.uploadAttempts.set(ip, []);
@@ -421,6 +431,33 @@ export class FileUploadService {
     this.uploadAttempts.set(ip, validAttempts);
 
     return true;
+  }
+
+  private static cleanupRateLimitMaps(): void {
+    const now = Date.now();
+    const windowMs = 15 * 60 * 1000;
+
+    for (const [key, attempts] of this.uploadAttempts.entries()) {
+      const validAttempts = attempts.filter((time) => now - time < windowMs);
+      if (validAttempts.length === 0) {
+        this.uploadAttempts.delete(key);
+      } else {
+        this.uploadAttempts.set(key, validAttempts);
+      }
+    }
+
+    for (const [key, attempts] of this.downloadAttempts.entries()) {
+      const validAttempts = attempts.filter((time) => now - time < 60 * 1000);
+      if (validAttempts.length === 0) {
+        this.downloadAttempts.delete(key);
+      } else {
+        this.downloadAttempts.set(key, validAttempts);
+      }
+    }
+
+    console.log(
+      `Rate limit maps cleaned: ${this.uploadAttempts.size} upload IPs, ${this.downloadAttempts.size} download keys`
+    );
   }
 
   private static validateMagicBytes(buffer: Buffer, mimeType: string): boolean {
@@ -466,7 +503,11 @@ export class FileUploadService {
   }
 
   private static async scanForMalware(filePath: string): Promise<void> {
-    console.log(`Antivirus scan for: ${filePath} - OK`);
+    console.log(`[SECURITY] Malware scan for: ${filePath}`);
+    if (process.env.SIMULATE_MALWARE_SCAN === "true") {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      console.log(`[SECURITY] Simulated malware scan PASSED: ${filePath}`);
+    }
   }
 
   // ===========================================

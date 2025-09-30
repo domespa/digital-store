@@ -1,4 +1,4 @@
-import { PrismaClient, Prisma } from "../generated/prisma";
+import { Prisma } from "../generated/prisma";
 import {
   WishlistItem,
   WishlistData,
@@ -7,8 +7,7 @@ import {
   WishlistStats,
   WishlistError,
 } from "../types/wishlist";
-
-const prisma = new PrismaClient();
+import { prisma } from "../utils/prisma";
 
 // ===========================================
 //               PRISMA TYPES

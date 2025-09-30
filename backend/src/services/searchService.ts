@@ -1,4 +1,3 @@
-import { PrismaClient } from "../generated/prisma";
 import {
   SearchFilters,
   SearchResult,
@@ -10,7 +9,7 @@ import {
   SearchSortField,
 } from "../types/search";
 
-const prisma = new PrismaClient();
+import { prisma } from "../utils/prisma";
 
 export class SearchService {
   // RICERCA PRODOTTI CON FILTRI AVANZATI

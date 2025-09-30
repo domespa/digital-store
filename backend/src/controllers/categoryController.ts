@@ -1,8 +1,7 @@
 import { Request, Response } from "express";
 import { PrismaClient } from "../generated/prisma";
 import { CategoryService } from "../services/categoryService";
-
-const prisma = new PrismaClient();
+import { prisma } from "../utils/prisma";
 
 export const getPublicCategories = async (req: Request, res: Response) => {
   try {

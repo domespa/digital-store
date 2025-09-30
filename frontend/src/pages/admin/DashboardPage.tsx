@@ -3,10 +3,14 @@ import { useRealTimeUsers } from "../../hooks/useRealTimeUsers";
 import { TimeFilters } from "./TimeFilters";
 import { ChartsSection } from "./ChartSection";
 import { useAnalyticsDashboard } from "../../hooks/useAnalyticsDashboard";
+import { useRecentActivity } from "../../hooks/useDashboardActivity";
 
 export default function DashboardPage() {
   const { totalOnline, loading: usersLoading } = useRealTimeUsers();
   const analyticsData = useAnalyticsDashboard();
+  const { recentActivity, isLoading: activityLoading } = useRecentActivity({
+    limit: 20,
+  });
 
   const periodStats = analyticsData.insights.summary || {
     totalOrders: 0,
@@ -26,12 +30,26 @@ export default function DashboardPage() {
     }).format(amount);
   };
 
+  const formatTimeAgo = (timestamp: string): string => {
+    const now = new Date();
+    const time = new Date(timestamp);
+    const diffMs = now.getTime() - time.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return "just now";
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    return `${diffDays}d ago`;
+  };
+
   const StatCard = ({
     title,
     value,
     subtitle,
     icon,
-    color = "blue",
+    color,
   }: {
     title: string;
     value: string | number;
@@ -50,9 +68,7 @@ export default function DashboardPage() {
     return (
       <Card>
         <div className="flex items-center">
-          <div
-            className={`p-3 rounded-lg ${colors[color]} text-white text-xl mr-4`}
-          >
+          <div className={`p-3 rounded-lg ${colors} text-white text-xl mr-4`}>
             {icon}
           </div>
           <div>
@@ -117,12 +133,17 @@ export default function DashboardPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex flex-col gap-2">
+          <TimeFilters
+            loading={analyticsData.chartsLoading}
+            selectedPeriod={analyticsData.period}
+            onPeriodChange={analyticsData.changePeriod}
+          />
           <button
             onClick={analyticsData.refreshData}
             disabled={analyticsData.loading || analyticsData.chartsLoading}
             className="px-3 py-2 text-sm bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 
-                     disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                 disabled:opacity-50 disabled:cursor-not-allowed flex items-center self-end border border-gray-300"
           >
             <span
               className={`${
@@ -135,14 +156,9 @@ export default function DashboardPage() {
             </span>
             Refresh
           </button>
-
-          <TimeFilters
-            selectedPeriod={analyticsData.period}
-            onPeriodChange={analyticsData.changePeriod}
-            loading={analyticsData.chartsLoading}
-          />
         </div>
       </div>
+
       {/* ERR */}
       {analyticsData.error && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
@@ -153,34 +169,21 @@ export default function DashboardPage() {
         </div>
       )}
       {/* ROW 1: STATS*/}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <StatCard
-          title="Total Orders"
-          value={periodStats.totalOrders}
-          subtitle={`Orders in ${analyticsData.period}`}
-          icon="📦"
-          color="blue"
+          title="Total Revenue"
+          value={formatPrice(periodStats.totalRevenue)}
+          icon="💰"
         />
         <StatCard
           title="Completed Orders"
           value={periodStats.completedOrders}
-          subtitle={`Completed in ${analyticsData.period}`}
           icon="✅"
-          color="green"
         />
         <StatCard
           title="Pending Orders"
           value={periodStats.pendingOrders}
-          subtitle={`Pending in ${analyticsData.period}`}
           icon="⏳"
-          color="yellow"
-        />
-        <StatCard
-          title="Total Revenue"
-          value={formatPrice(periodStats.totalRevenue)}
-          subtitle={`Revenue in ${analyticsData.period}`}
-          icon="💰"
-          color="green"
         />
       </div>
       {/* ROW 2: PERFSTATS*/}
@@ -188,25 +191,15 @@ export default function DashboardPage() {
         <StatCard
           title="Conversion Rate"
           value={`${periodStats.conversionRate?.toFixed(1) || 0}%`}
-          subtitle={`Rate in ${analyticsData.period}`}
           icon="📊"
-          color="purple"
         />
         <StatCard
           title="Avg Order Value"
           value={formatPrice(periodStats.averageOrderValue)}
-          subtitle={`Average in ${analyticsData.period}`}
           icon="💳"
-          color="blue"
         />
         {/* USERONLIE*/}
-        <StatCard
-          title="Users Online"
-          value={totalOnline}
-          subtitle="Users Online"
-          icon="👥"
-          color="green"
-        />
+        <StatCard title="Users Online" value={totalOnline} icon="👥" />
       </div>
       {/* CHARTS SECTION */}
       <ChartsSection
@@ -259,20 +252,89 @@ export default function DashboardPage() {
           </Card>
         </div>
       )}
-      {/* ROW 3: MANCA LOGICA TOPCOUNTR E RECENT ACT */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-            🌍 <span className="ml-2">Top Countries</span>
-          </h3>
-        </Card>
-
+      {/* ROW 3: RECENT ACT */}
+      <div className="grid grid-cols-1 lg:grid-cols-1 gap-6">
         {/* RECENT*/}
         <Card>
-          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-            🔔 <span className="ml-2">Recent Activity</span>
-          </h3>
-          <div className="space-y-3 max-h-64 overflow-y-auto"></div>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+              🔔 <span className="ml-2">Recent Orders</span>
+            </h3>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                Live Updates
+              </span>
+              {!activityLoading && recentActivity.length > 0 && (
+                <span className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded font-medium">
+                  {recentActivity.length} recent
+                </span>
+              )}
+            </div>
+          </div>
+
+          {activityLoading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 8 }, (_, i) => (
+                <div
+                  key={i}
+                  className="h-16 bg-gray-200 rounded-lg animate-pulse"
+                ></div>
+              ))}
+            </div>
+          ) : recentActivity.length === 0 ? (
+            <div className="text-center py-12 text-gray-500">
+              <div className="text-5xl mb-3">📦</div>
+              <p className="text-base font-medium">No recent orders</p>
+              <p className="text-sm mt-1">
+                New orders will appear here in real-time
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 max-h-96 overflow-y-auto">
+              {recentActivity.map((activity) => (
+                <div
+                  key={activity.id}
+                  className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors border border-gray-100"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-gray-900 leading-relaxed">
+                      {activity.message}
+                    </p>
+                    <div className="flex items-center gap-2 mt-1.5">
+                      <p className="text-xs text-gray-500">
+                        {formatTimeAgo(activity.timestamp)}
+                      </p>
+                      <span className="text-xs text-gray-400">•</span>
+                      <span className="text-xs text-gray-600 font-medium">
+                        Order #{activity.metadata.orderId.slice(-8)}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-end gap-1">
+                    <span
+                      className={`text-xs px-2 py-1 rounded-full flex-shrink-0 font-medium ${
+                        activity.metadata.status === "COMPLETED"
+                          ? "bg-green-100 text-green-700"
+                          : activity.metadata.status === "PAID"
+                          ? "bg-blue-100 text-blue-700"
+                          : activity.metadata.status === "PENDING"
+                          ? "bg-yellow-100 text-yellow-700"
+                          : activity.metadata.status === "FAILED"
+                          ? "bg-red-100 text-red-700"
+                          : "bg-gray-100 text-gray-700"
+                      }`}
+                    >
+                      {activity.metadata.status}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {activity.metadata.items} item
+                      {activity.metadata.items !== 1 ? "s" : ""}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </Card>
       </div>
     </div>

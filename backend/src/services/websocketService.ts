@@ -11,8 +11,7 @@ import {
 } from "../types/notifications";
 import { logger } from "../utils/logger";
 import { CustomError } from "../utils/customError";
-
-const prisma = new PrismaClient();
+import { prisma } from "../utils/prisma";
 
 // ===========================================
 //               TYPES & INTERFACES
@@ -553,17 +552,34 @@ class WebSocketService {
   // ===========================================
 
   private isQuietHour(quietHours: QuietHours | null): boolean {
-    if (!quietHours?.start || !quietHours?.end) return false;
+    if (!quietHours?.start || !quietHours?.end || !quietHours?.timezone) {
+      return false;
+    }
 
-    const now = new Date();
-    const currentHour = now.getHours();
-    const startHour = parseInt(quietHours.start.split(":")[0]);
-    const endHour = parseInt(quietHours.end.split(":")[0]);
+    try {
+      const now = new Date();
+      const userTime = new Date(
+        now.toLocaleString("en-US", { timeZone: quietHours.timezone })
+      );
+      const currentHour = userTime.getHours();
+      const currentMinute = userTime.getMinutes();
+      const currentTime = currentHour * 60 + currentMinute;
 
-    if (startHour <= endHour) {
-      return currentHour >= startHour && currentHour < endHour;
-    } else {
-      return currentHour >= startHour || currentHour < endHour;
+      const [startHour, startMinute] = quietHours.start.split(":").map(Number);
+      const [endHour, endMinute] = quietHours.end.split(":").map(Number);
+      const startTime = startHour * 60 + startMinute;
+      const endTime = endHour * 60 + endMinute;
+
+      if (startTime > endTime) {
+        return currentTime >= startTime || currentTime < endTime;
+      }
+
+      return currentTime >= startTime && currentTime < endTime;
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        logger.warn("Failed to check quiet hours:", error);
+      }
+      return false;
     }
   }
 

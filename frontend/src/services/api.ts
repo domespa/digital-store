@@ -85,3 +85,17 @@ export const orders = {
     return response.data;
   },
 };
+
+export const payments = {
+  capturePayPal: async (orderId: string) => {
+    const response = await api.post(`/payments/capture/${orderId}`);
+    return response.data;
+  },
+
+  getPaymentStatus: async (orderId: string) => {
+    const response = await api.get(`/payments/status/${orderId}`);
+    return response.data;
+  },
+};
+
+export default api;

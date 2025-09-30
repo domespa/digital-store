@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import { PrismaClient, BusinessModel, UserRole } from "../generated/prisma";
+import { BusinessModel, UserRole } from "../generated/prisma";
 import {
   CreateTicketRequest,
   UpdateTicketRequest,
@@ -10,18 +10,9 @@ import {
   PaginationOptions,
   SubmitSatisfactionRequest,
   ApiResponse,
-  SupportErrorCodes,
-  SupportConfig,
-  TicketResponse,
-  TicketListResponse,
   SupportAgentResponse,
   CreateAgentRequest,
   UpdateAgentRequest,
-  SupportAnalyticsResponse,
-  AnalyticsFilters,
-  AnalyticsOverview,
-  TrendData,
-  PerformanceMetrics,
 } from "../types/support";
 import { UserProfile } from "../types/auth";
 import { SupportService } from "../services/supportService";

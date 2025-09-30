@@ -47,8 +47,6 @@ export function TimeFilters({
 }: TimeFiltersProps) {
   return (
     <div className="flex flex-wrap gap-2 justify-end items-center mb-6">
-      <span className="text-sm font-medium text-gray-600 mr-2">Periodo:</span>
-
       <div className="flex flex-wrap gap-2">
         {TIME_PERIODS.map((period) => {
           const isSelected = selectedPeriod === period.key;
@@ -84,7 +82,7 @@ export function TimeFilters({
       {loading && (
         <div className="flex items-center ml-3">
           <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-600 border-t-transparent"></div>
-          <span className="ml-2 text-sm text-gray-500">Aggiornamento...</span>
+          <span className="ml-2 text-sm text-gray-500">Updating...</span>
         </div>
       )}
     </div>

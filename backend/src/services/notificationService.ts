@@ -11,9 +11,6 @@ import {
   NotificationPriority as PrismaNotificationPriority,
   NotificationCategory as PrismaNotificationCategory,
   DeliveryMethod,
-  User,
-  Order,
-  Product,
   Notification,
   NotificationPreference,
   NotificationTemplate,
@@ -21,8 +18,6 @@ import {
   BulkNotificationData,
   CreateTemplateData,
   OrderWithUser,
-  ProductWithWishlists,
-  ReviewWithRelations,
   NotificationWithRelations,
   QuietHours,
   PromotionDetails,
@@ -31,14 +26,14 @@ import {
   PaginationParams,
   NotificationPreferenceUpdate,
 } from "../types/notifications";
-
-const prisma = new PrismaClient();
+import { prisma } from "../utils/prisma";
 
 class NotificationService {
   constructor(
     private webSocketService: WebSocketService,
     private emailService: EmailService
   ) {}
+
   // ===========================================
   //         CORE NOTIFICATION METHODS
   // ===========================================
@@ -106,7 +101,7 @@ class NotificationService {
               category: data.notification.category,
               priority:
                 data.notification.priority || PrismaNotificationPriority.NORMAL,
-              data: (data.notification.data as Prisma.JsonValue) || {}, // cast a JsonValue
+              data: (data.notification.data as Prisma.JsonValue) || {},
               actionUrl: data.notification.actionUrl,
               expiresAt: data.notification.expiresAt,
               scheduledFor: data.notification.scheduledFor,
@@ -119,7 +114,6 @@ class NotificationService {
         )
       );
 
-      // Deliver all notifications
       await Promise.all(
         notifications.map((notification) =>
           this.deliverNotification(notification)
@@ -135,6 +129,7 @@ class NotificationService {
       throw new CustomError("Failed to create bulk notifications", 500);
     }
   }
+
   // ===========================================
   //         USER NOTIFICATION METHODS
   // ===========================================
@@ -283,9 +278,11 @@ class NotificationService {
       return 0;
     }
   }
+
   // ===========================================
   //         PREFERENCES METHODS
   // ===========================================
+
   async getUserPreferences(userId: string): Promise<NotificationPreference> {
     try {
       let preferences = await prisma.notificationPreference.findUnique({
@@ -333,9 +330,11 @@ class NotificationService {
       throw new CustomError("Failed to update user preferences", 500);
     }
   }
+
   // ===========================================
   //         STATISTICS METHODS
   // ===========================================
+
   async getNotificationStats(userId?: string) {
     try {
       const where = userId ? { userId } : {};
@@ -377,9 +376,11 @@ class NotificationService {
       throw new CustomError("Failed to get notification stats", 500);
     }
   }
+
   // ===========================================
   //         ADMIN METHODS
   // ===========================================
+
   async processScheduledNotifications(): Promise<number> {
     try {
       const scheduledNotifications = await prisma.notification.findMany({
@@ -456,16 +457,18 @@ class NotificationService {
       throw new CustomError("Failed to cleanup expired notifications", 500);
     }
   }
+
   // ===========================================
   //             TEMPLATE METHODS
   // ===========================================
+
   async createTemplate(
     data: CreateTemplateData
   ): Promise<NotificationTemplate> {
     try {
       return await prisma.notificationTemplate.create({
         data: {
-          type: data.type as PrismaNotificationType, // <- cast qui
+          type: data.type as PrismaNotificationType,
           category: data.category,
           websocketTitle: data.websocketTitle,
           websocketMessage: data.websocketMessage,
@@ -549,15 +552,16 @@ class NotificationService {
       throw new CustomError("Failed to delete template", 500);
     }
   }
+
   // ===========================================
   //             PRIVATE METHODS
   // ===========================================
+
   private async deliverNotification(
     notification: NotificationWithRelations | Notification
   ): Promise<void> {
     try {
       if (!notification.userId) {
-        // System/admin notification
         await this.webSocketService.sendNotificationToAdmins({
           id: notification.id,
           type: notification.type,
@@ -586,8 +590,22 @@ class NotificationService {
         } as any;
       }
 
+      //  QUIET HOURS
+      if (preferences.quietHours) {
+        const quietHours = this.parseQuietHours(preferences.quietHours);
+        if (quietHours && this.isInQuietHours(quietHours)) {
+          logger.info(
+            `Notification ${notification.id} delayed due to quiet hours`
+          );
+          return;
+        }
+      }
+
+      let deliverySuccess = false;
+
+      // WEBSOCKET DELIVERY WITH TRACKING
       if (preferences.enableWebSocket) {
-        await this.webSocketService.sendNotificationToUser(
+        const wsSuccess = await this.webSocketService.sendNotificationToUser(
           notification.userId,
           {
             id: notification.id,
@@ -601,6 +619,20 @@ class NotificationService {
             createdAt: notification.createdAt,
           }
         );
+
+        if (wsSuccess) {
+          deliverySuccess = true;
+          await prisma.notification
+            .update({
+              where: { id: notification.id },
+              data: {
+                isDelivered: true,
+                deliveredAt: new Date(),
+                deliveryMethod: DeliveryMethod.WEBSOCKET,
+              },
+            })
+            .catch(() => {});
+        }
       }
 
       if (
@@ -609,7 +641,20 @@ class NotificationService {
           preferences.enableEmail) &&
         this.shouldSendEmailForType(notification.type, preferences)
       ) {
-        await this.sendEmailNotification(notification);
+        const emailSuccess = await this.sendEmailNotification(notification);
+
+        if (emailSuccess && !deliverySuccess) {
+          await prisma.notification
+            .update({
+              where: { id: notification.id },
+              data: {
+                isDelivered: true,
+                deliveredAt: new Date(),
+                deliveryMethod: DeliveryMethod.EMAIL,
+              },
+            })
+            .catch(() => {});
+        }
       }
     } catch (error) {
       logger.error(
@@ -618,9 +663,69 @@ class NotificationService {
       );
     }
   }
+
   // ===========================================
-  //             TEMPLATE-BASED NOTIFICATIONS
+  //        QUIET HOURS IMPLEMENTATION
   // ===========================================
+
+  private isInQuietHours(quietHours: QuietHours): boolean {
+    if (!quietHours?.start || !quietHours?.end || !quietHours?.timezone) {
+      return false;
+    }
+
+    try {
+      const now = new Date();
+      const userTime = new Date(
+        now.toLocaleString("en-US", { timeZone: quietHours.timezone })
+      );
+      const currentHour = userTime.getHours();
+      const currentMinute = userTime.getMinutes();
+      const currentTime = currentHour * 60 + currentMinute;
+
+      const [startHour, startMinute] = quietHours.start.split(":").map(Number);
+      const [endHour, endMinute] = quietHours.end.split(":").map(Number);
+      const startTime = startHour * 60 + startMinute;
+      const endTime = endHour * 60 + endMinute;
+
+      if (startTime > endTime) {
+        return currentTime >= startTime || currentTime < endTime;
+      }
+
+      return currentTime >= startTime && currentTime < endTime;
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        logger.warn("Failed to check quiet hours:", error);
+      }
+      return false;
+    }
+  }
+
+  private parseQuietHours(quietHours: unknown): QuietHours | null {
+    if (!quietHours || typeof quietHours !== "object") {
+      return null;
+    }
+
+    const qh = quietHours as Record<string, unknown>;
+
+    if (
+      typeof qh.start === "string" &&
+      typeof qh.end === "string" &&
+      typeof qh.timezone === "string"
+    ) {
+      return {
+        start: qh.start,
+        end: qh.end,
+        timezone: qh.timezone,
+      };
+    }
+
+    return null;
+  }
+
+  // ===========================================
+  //       TEMPLATE-BASED NOTIFICATIONS
+  // ===========================================
+
   async createNotificationFromTemplate(
     type: PrismaNotificationType,
     userId: string | null,
@@ -630,10 +735,9 @@ class NotificationService {
       const template = await this.getTemplate(type);
 
       if (!template) {
-        // Fallback se il template non esiste
         return await this.createNotification({
           userId: userId || undefined,
-          type, // PrismaNotificationType
+          type,
           title: `Notification: ${type}`,
           message: `A ${type} event occurred`,
           category: "SYSTEM" as PrismaNotificationCategory,
@@ -653,7 +757,7 @@ class NotificationService {
         type: PrismaNotificationType;
       } = {
         userId: userId || undefined,
-        type, // PrismaNotificationType
+        type,
         title,
         message,
         priority: template.priority as PrismaNotificationPriority,
@@ -670,10 +774,9 @@ class NotificationService {
 
       return await this.createNotification(notificationData);
     } catch (error) {
-      // fallback generico
       return await this.createNotification({
         userId: userId || undefined,
-        type, // PrismaNotificationType
+        type,
         title: `Notification: ${type}`,
         message: `A ${type} event occurred`,
         category: "SYSTEM" as PrismaNotificationCategory,
@@ -687,6 +790,7 @@ class NotificationService {
   // ===========================================
   //           ORDER NOTIFICATIONS
   // ===========================================
+
   async notifyOrderCreated(order: OrderWithUser): Promise<void> {
     const variables = {
       orderNumber: order.id,
@@ -755,9 +859,11 @@ class NotificationService {
       );
     }
   }
+
   // ===========================================
-  //           PAYMENT NOTIFICATIONS
+  //         PAYMENT NOTIFICATIONS
   // ===========================================
+
   async notifyPaymentSuccess(order: OrderWithUser): Promise<void> {
     const variables = {
       orderNumber: order.id,
@@ -807,9 +913,11 @@ class NotificationService {
       );
     }
   }
+
   // ===========================================
   //           USER NOTIFICATIONS
   // ===========================================
+
   async notifyAccountCreated(userId: string): Promise<void> {
     try {
       const user = await prisma.user.findUnique({
@@ -864,9 +972,11 @@ class NotificationService {
       );
     }
   }
+
   // ===========================================
-  //           SYSTEM NOTIFICATIONS
+  //          SYSTEM NOTIFICATIONS
   // ===========================================
+
   async notifySystemError(error: Error, context?: string): Promise<void> {
     try {
       const variables = {
@@ -889,11 +999,54 @@ class NotificationService {
   }
 
   // ===========================================
-  //           STUB METHODS
+  //              STUB METHODS
   // ===========================================
 
   async notifyProductBackInStock(productId: string): Promise<void> {
-    logger.info(`Product ${productId} back in stock notification queued`);
+    try {
+      const product = await prisma.product.findUnique({
+        where: { id: productId },
+        include: {
+          wishlists: {
+            include: { user: true },
+          },
+        },
+      });
+
+      if (!product || product.wishlists.length === 0) {
+        logger.info(`No wishlists for product ${productId}`);
+        return;
+      }
+
+      const userIds = product.wishlists.map((w) => w.userId);
+
+      await this.createBulkNotifications({
+        userIds,
+        notification: {
+          type: PrismaNotificationType.PRODUCT_BACK_IN_STOCK,
+          title: `${product.name} is back in stock!`,
+          message: `The product you wishlisted is now available. Get it before it's gone!`,
+          category: PrismaNotificationCategory.PRODUCT,
+          priority: PrismaNotificationPriority.NORMAL,
+          actionUrl: `/products/${productId}`,
+          data: {
+            productId,
+            productName: product.name,
+            price: product.price.toString(),
+            stock: product.stock,
+          },
+        },
+      });
+
+      logger.info(
+        `Sent back-in-stock notifications to ${userIds.length} users for product ${productId}`
+      );
+    } catch (error) {
+      logger.error(
+        "Failed to send back-in-stock notifications:",
+        error instanceof Error ? error.message : "errore sconosciuto"
+      );
+    }
   }
 
   async notifyLowStock(
@@ -901,32 +1054,173 @@ class NotificationService {
     currentStock: number,
     threshold: number
   ): Promise<void> {
-    logger.info(`Low stock alert for product ${productId}`);
+    try {
+      const product = await prisma.product.findUnique({
+        where: { id: productId },
+        select: { id: true, name: true, stock: true, price: true },
+      });
+
+      if (!product) return;
+
+      await this.createNotification({
+        userId: undefined,
+        type: PrismaNotificationType.LOW_STOCK_ALERT,
+        title: `Low Stock Alert: ${product.name}`,
+        message: `Product stock is low (${currentStock}/${threshold}). Consider restocking soon.`,
+        category: PrismaNotificationCategory.ADMIN,
+        priority: PrismaNotificationPriority.HIGH,
+        actionUrl: `/admin/products/${productId}`,
+        data: {
+          productId,
+          productName: product.name,
+          currentStock,
+          threshold,
+          stockPercentage: Math.round((currentStock / threshold) * 100),
+        },
+      });
+
+      logger.info(`Low stock alert sent for product ${productId}`);
+    } catch (error) {
+      logger.error(
+        "Failed to send low stock alert:",
+        error instanceof Error ? error.message : "errore sconosciuto"
+      );
+    }
   }
 
   async notifyNewReview(reviewId: string): Promise<void> {
-    logger.info(`New review ${reviewId} notification queued`);
+    try {
+      const review = await prisma.review.findUnique({
+        where: { id: reviewId },
+        include: {
+          product: {
+            select: { id: true, name: true, createdBy: true },
+          },
+          user: {
+            select: { id: true, firstName: true, lastName: true },
+          },
+        },
+      });
+
+      if (!review) return;
+
+      const reviewerName =
+        review.user?.firstName || review.customerName || "A customer";
+
+      if (review.product.createdBy) {
+        await this.createNotification({
+          userId: review.product.createdBy,
+          type: PrismaNotificationType.PRODUCT_NEW_REVIEW,
+          title: `New review for ${review.product.name}`,
+          message: `${reviewerName} left a ${review.rating}-star review on your product.`,
+          category: PrismaNotificationCategory.REVIEW,
+          priority: PrismaNotificationPriority.NORMAL,
+          actionUrl: `/products/${review.product.id}#reviews`,
+          data: {
+            reviewId,
+            productId: review.product.id,
+            productName: review.product.name,
+            rating: review.rating,
+            reviewerName,
+          },
+        });
+      }
+
+      logger.info(`New review notification sent for review ${reviewId}`);
+    } catch (error) {
+      logger.error(
+        "Failed to send new review notification:",
+        error instanceof Error ? error.message : "errore sconosciuto"
+      );
+    }
   }
 
   async notifyPromotionStarted(
     userIds: string[],
     promotion: PromotionDetails
   ): Promise<void> {
-    logger.info(
-      `Promotion ${promotion.name} notification queued for ${userIds.length} users`
-    );
+    try {
+      await this.createBulkNotifications({
+        userIds,
+        notification: {
+          type: PrismaNotificationType.PROMOTION_STARTED,
+          title: `🎉 ${promotion.name} - ${promotion.discountPercentage}% OFF!`,
+          message: `Use code ${promotion.code} before ${new Date(
+            promotion.validUntil
+          ).toLocaleDateString()}. Don't miss out!`,
+          category: PrismaNotificationCategory.MARKETING,
+          priority: PrismaNotificationPriority.NORMAL,
+          actionUrl: `/promotions/${promotion.code}`,
+          expiresAt: new Date(promotion.validUntil),
+          data: {
+            promotionName: promotion.name,
+            discountPercentage: promotion.discountPercentage,
+            code: promotion.code,
+            validUntil: promotion.validUntil,
+          },
+        },
+      });
+
+      logger.info(
+        `Promotion ${promotion.name} notification sent to ${userIds.length} users`
+      );
+    } catch (error) {
+      logger.error(
+        "Failed to send promotion notifications:",
+        error instanceof Error ? error.message : "errore sconosciuto"
+      );
+    }
   }
 
   async notifyCartAbandoned(
     userId: string,
     cartItems: CartItem[]
   ): Promise<void> {
-    logger.info(`Cart abandonment notification queued for user ${userId}`);
+    try {
+      const totalValue = cartItems.reduce(
+        (sum, item) => sum + item.price * item.quantity,
+        0
+      );
+      const itemCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
+
+      const itemsList = cartItems
+        .slice(0, 3)
+        .map((item) => item.name)
+        .join(", ");
+
+      await this.createNotification({
+        userId,
+        type: PrismaNotificationType.CART_ABANDONED,
+        title: "You left items in your cart!",
+        message: `Don't forget about ${itemCount} item${
+          itemCount > 1 ? "s" : ""
+        } waiting for you: ${itemsList}${
+          cartItems.length > 3 ? "..." : ""
+        }. Complete your purchase now!`,
+        category: PrismaNotificationCategory.MARKETING,
+        priority: PrismaNotificationPriority.NORMAL,
+        actionUrl: "/cart",
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        data: {
+          totalValue: totalValue.toFixed(2),
+          itemCount,
+          items: cartItems,
+        },
+      });
+
+      logger.info(`Cart abandonment notification sent to user ${userId}`);
+    } catch (error) {
+      logger.error(
+        "Failed to send cart abandonment notification:",
+        error instanceof Error ? error.message : "errore sconosciuto"
+      );
+    }
   }
 
   // ===========================================
-  //           HELPER METHODS
+  //   HELPER METHODS
   // ===========================================
+
   private processTemplate(
     template: string,
     variables: Record<string, unknown>
@@ -967,7 +1261,7 @@ class NotificationService {
 
   private async sendEmailNotification(
     notification: NotificationWithRelations | Notification
-  ): Promise<void> {
+  ): Promise<boolean> {
     try {
       const user =
         "user" in notification
@@ -976,10 +1270,26 @@ class NotificationService {
               where: { id: notification.userId || "" },
             });
 
-      if (!user?.email) return;
+      if (!user?.email) return false;
 
       const template = await this.getTemplate(notification.type);
-      if (!template?.emailSubject || !template?.emailTemplate) return;
+
+      // FALLBACK
+      if (!template?.emailSubject || !template?.emailTemplate) {
+        if (
+          notification.priority === PrismaNotificationPriority.HIGH ||
+          notification.priority === PrismaNotificationPriority.URGENT
+        ) {
+          await this.emailService.sendEmail({
+            to: user.email,
+            subject: notification.title,
+            html: `<p>${notification.message}</p>`,
+            text: notification.message,
+          });
+          return true;
+        }
+        return false;
+      }
 
       const subject = this.processTemplate(
         template.emailSubject,
@@ -996,11 +1306,14 @@ class NotificationService {
         html: content,
         text: notification.message,
       });
+
+      return true;
     } catch (error) {
       logger.warn(
         "Failed to send email notification:",
         error instanceof Error ? error.message : "errore sconosciuto"
       );
+      return false;
     }
   }
 }

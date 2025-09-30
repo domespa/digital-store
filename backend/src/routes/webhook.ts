@@ -1,10 +1,9 @@
 import express, { Request, Response } from "express";
 import bodyParser from "body-parser";
 import { stripe } from "../services/stripe";
-import { PrismaClient } from "../generated/prisma";
 import Stripe from "stripe";
+import { prisma } from "../utils/prisma";
 
-const prisma = new PrismaClient();
 const router = express.Router();
 
 router.post(

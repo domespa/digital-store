@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useCart } from "./useCart";
 import { createCheckoutOrder } from "../services/checkout";
+import { payments } from "../services/api";
 import type {
   CheckoutItem,
   CheckoutRequest,
@@ -9,7 +10,7 @@ import type {
 } from "../types/checkout";
 
 export const useCheckout = () => {
-  const { cart, clearCart, getCartTotal, getDisplayCurrency } = useCart();
+  const { cart, clearCart, getDisplayCurrency } = useCart();
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -52,28 +53,10 @@ export const useCheckout = () => {
       };
 
       console.log("🛒 SENDING TO BACKEND:", checkoutData);
-      console.log("🛒 CART TOTAL FRONTEND:", getCartTotal());
-
-      console.log("🛒 SENDING CHECKOUT:", {
-        checkoutData,
-        cartItems: cart.items.map((item) => ({
-          id: item.id,
-          name: item.name,
-          productId: item.productId,
-          displayPrice: item.displayPrice,
-          quantity: item.quantity,
-        })),
-        cartTotal: getCartTotal(),
-      });
 
       const response = await createCheckoutOrder(checkoutData);
 
-      console.log("📨 BACKEND RESPONSE:", {
-        fullResponse: response,
-        orderTotal: response.order?.total,
-        displayTotal: response.displayTotal,
-        orderItems: response.order?.orderItems,
-      });
+      console.log("📨 BACKEND RESPONSE:", response);
 
       if (response.paymentProvider === "STRIPE" && response.clientSecret) {
         return {
@@ -85,8 +68,12 @@ export const useCheckout = () => {
       }
 
       if (response.paymentProvider === "PAYPAL" && response.approvalUrl) {
+        localStorage.setItem("paypal_pending_order", response.order.id);
+        localStorage.setItem("paypal_form_data", JSON.stringify(formData));
+
         console.log("REDIRECTING TO PAYPAL", response.approvalUrl);
         window.location.href = response.approvalUrl;
+
         return {
           success: true,
           type: "paypal_redirect",
@@ -114,9 +101,20 @@ export const useCheckout = () => {
     }
   };
 
+  const capturePayPalPayment = async (orderId: string) => {
+    try {
+      const response = await payments.capturePayPal(orderId);
+      return response;
+    } catch (error) {
+      console.error("PayPal capture error:", error);
+      throw error;
+    }
+  };
+
   const clearError = () => setError(null);
   return {
     processCheckoutData,
+    capturePayPalPayment,
     isProcessing,
     error,
     clearError,

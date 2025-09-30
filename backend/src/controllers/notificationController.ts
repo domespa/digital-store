@@ -10,6 +10,7 @@ import {
   PaginationParams,
 } from "../types/notifications";
 import { z } from "zod";
+import { prisma } from "../utils/prisma";
 
 // ===========================================
 //                CONSTANTS
@@ -23,7 +24,6 @@ const ADMIN_DEFAULT_PAGE_SIZE = 50;
 // ===========================================
 interface AuthenticatedRequest extends Omit<Request, "user"> {
   user: {
-    // Required now instead of optional
     id: string;
     role: string;
     email: string;
@@ -44,9 +44,7 @@ interface QueryFilters {
   search?: string;
 }
 
-interface AdminNotificationFilters extends QueryFilters {
-  // Admin-specific filters can be added here
-}
+interface AdminNotificationFilters extends QueryFilters {}
 
 // ===========================================
 //            VALIDATION SCHEMAS
@@ -109,7 +107,7 @@ const templateSchema = z.object({
   priority: z.nativeEnum(NotificationPriority),
   requiresAction: z.boolean().default(false),
   autoExpire: z.boolean().default(false),
-  expirationHours: z.number().min(1).max(8760).optional(), // Max 1 year
+  expirationHours: z.number().min(1).max(8760).optional(),
   variables: z.record(z.string(), z.unknown()).optional(),
 });
 
@@ -180,8 +178,6 @@ class NotificationController {
   // ===========================================
   //             USER ENDPOINTS
   // ===========================================
-
-  // Get user notifications with filtering and pagination
   getNotifications = catchAsync(
     async (req: AuthenticatedRequest, res: Response) => {
       const userId = req.user.id;
@@ -201,7 +197,6 @@ class NotificationController {
     }
   );
 
-  // Get unread notifications count
   getUnreadCount = catchAsync(
     async (req: AuthenticatedRequest, res: Response) => {
       const userId = req.user.id;
@@ -214,7 +209,6 @@ class NotificationController {
     }
   );
 
-  // Mark notification as read
   markAsRead = catchAsync(async (req: AuthenticatedRequest, res: Response) => {
     const { id } = req.params;
     const userId = req.user.id;
@@ -231,7 +225,6 @@ class NotificationController {
     });
   });
 
-  // Mark all notifications as read
   markAllAsRead = catchAsync(
     async (req: AuthenticatedRequest, res: Response) => {
       const userId = req.user.id;
@@ -244,7 +237,6 @@ class NotificationController {
     }
   );
 
-  // Delete notification
   deleteNotification = catchAsync(
     async (req: AuthenticatedRequest, res: Response) => {
       const { id } = req.params;
@@ -266,7 +258,6 @@ class NotificationController {
     }
   );
 
-  // Get user notification preferences
   getPreferences = catchAsync(
     async (req: AuthenticatedRequest, res: Response) => {
       const userId = req.user.id;
@@ -281,7 +272,6 @@ class NotificationController {
     }
   );
 
-  // Update user notification preferences
   updatePreferences = catchAsync(
     async (req: AuthenticatedRequest, res: Response) => {
       const userId = req.user.id;
@@ -300,7 +290,6 @@ class NotificationController {
     }
   );
 
-  // Get notification statistics (user-specific)
   getStats = catchAsync(async (req: AuthenticatedRequest, res: Response) => {
     const userId = req.user.id;
     const stats = await this.notificationService.getNotificationStats(userId);
@@ -314,8 +303,6 @@ class NotificationController {
   // ===========================================
   //            ADMIN ENDPOINTS
   // ===========================================
-
-  // Create notification (admin only)
   createNotification = catchAsync(
     async (req: AuthenticatedRequest, res: Response) => {
       const validatedData = createNotificationSchema.parse(req.body);
@@ -336,7 +323,6 @@ class NotificationController {
     }
   );
 
-  // Send bulk notifications (admin only)
   sendBulkNotifications = catchAsync(
     async (req: AuthenticatedRequest, res: Response) => {
       const validatedData = bulkNotificationSchema.parse(req.body);
@@ -357,14 +343,13 @@ class NotificationController {
         success: true,
         data: {
           count: notifications.length,
-          notifications: notifications.slice(0, 5), // Return first 5 for reference
+          notifications: notifications.slice(0, 5),
         },
         message: `${notifications.length} notifications sent successfully`,
       });
     }
   );
 
-  // Get all notifications (admin only) with advanced filtering
   getAllNotifications = catchAsync(
     async (req: AuthenticatedRequest, res: Response) => {
       const query = req.query as AdminNotificationFilters;
@@ -374,7 +359,6 @@ class NotificationController {
       );
       const skip = (page - 1) * limit;
 
-      // Build where clause with proper typing
       const where: Record<string, unknown> = {};
 
       if (query.userId) where.userId = query.userId;
@@ -406,7 +390,6 @@ class NotificationController {
         ];
       }
 
-      const prisma = new PrismaClient();
       const [notifications, total] = await Promise.all([
         prisma.notification.findMany({
           where,
@@ -444,13 +427,10 @@ class NotificationController {
     }
   );
 
-  // Get global notification statistics (admin only)
   getGlobalStats = catchAsync(
     async (req: AuthenticatedRequest, res: Response) => {
       const stats = await this.notificationService.getNotificationStats();
 
-      // Additional admin-specific stats
-      const prisma = new PrismaClient();
       const [
         totalUsers,
         activeConnections,
@@ -463,7 +443,7 @@ class NotificationController {
         prisma.notification.count({
           where: {
             createdAt: {
-              gte: new Date(Date.now() - 24 * 60 * 60 * 1000), // Last 24 hours
+              gte: new Date(Date.now() - 24 * 60 * 60 * 1000),
             },
           },
         }),
@@ -501,7 +481,6 @@ class NotificationController {
     }
   );
 
-  // Send test notification (admin only)
   sendTestNotification = catchAsync(
     async (req: AuthenticatedRequest, res: Response) => {
       const { userId = req.user.id } = req.body as { userId?: string };
@@ -526,7 +505,6 @@ class NotificationController {
     }
   );
 
-  // Process scheduled notifications manually (admin only)
   processScheduledNotifications = catchAsync(
     async (req: AuthenticatedRequest, res: Response) => {
       const processedCount =
@@ -539,7 +517,6 @@ class NotificationController {
     }
   );
 
-  // Cleanup expired notifications (admin only)
   cleanupExpiredNotifications = catchAsync(
     async (req: AuthenticatedRequest, res: Response) => {
       const count =
@@ -552,10 +529,8 @@ class NotificationController {
     }
   );
 
-  // Get WebSocket connection stats (admin only)
   getConnectionStats = catchAsync(
     async (req: AuthenticatedRequest, res: Response) => {
-      const prisma = new PrismaClient();
       const [activeConnections, totalConnections, connectionsByHour] =
         await Promise.all([
           prisma.webSocketConnection.count({ where: { isActive: true } }),
@@ -603,7 +578,6 @@ class NotificationController {
   //          TEMPLATE MANAGEMENT
   // ===========================================
 
-  // Create template (admin only)
   createTemplate = catchAsync(
     async (req: AuthenticatedRequest, res: Response) => {
       const validatedData = templateSchema.parse(req.body);
@@ -619,7 +593,6 @@ class NotificationController {
     }
   );
 
-  // Get all templates (admin only)
   getTemplates = catchAsync(
     async (req: AuthenticatedRequest, res: Response) => {
       const templates = await this.notificationService.getAllTemplates();
@@ -631,7 +604,6 @@ class NotificationController {
     }
   );
 
-  // Update template (admin only)
   updateTemplate = catchAsync(
     async (req: AuthenticatedRequest, res: Response) => {
       const { id } = req.params;
@@ -650,7 +622,6 @@ class NotificationController {
     }
   );
 
-  // Delete template (admin only)
   deleteTemplate = catchAsync(
     async (req: AuthenticatedRequest, res: Response) => {
       const { id } = req.params;

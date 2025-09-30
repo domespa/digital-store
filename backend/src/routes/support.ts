@@ -101,13 +101,23 @@ class SupportServiceFactory {
 
   static createSupportService(
     prisma: PrismaClient,
-    existingServices: ExistingServices = {}
+    existingServices: ExistingServices
   ): SupportService {
     this.validateRequiredServices(prisma, existingServices);
 
-    const emailService = existingServices.emailService || new EmailService();
-    const uploadService =
-      existingServices.uploadService || new FileUploadService();
+    if (!existingServices.emailService) {
+      throw new Error(
+        "EmailService is required. Please provide it in existingServices."
+      );
+    }
+    if (!existingServices.uploadService) {
+      throw new Error(
+        "UploadService is required. Please provide it in existingServices."
+      );
+    }
+
+    const emailService = existingServices.emailService;
+    const uploadService = existingServices.uploadService;
     const websocketService = existingServices.websocketService!;
 
     const notificationService =
@@ -164,7 +174,7 @@ const createHealthCheckRoute = (prisma: PrismaClient): Router => {
 
 export function setupSupportRoutes(
   prisma: PrismaClient,
-  existingServices: ExistingServices = {},
+  existingServices: ExistingServices,
   options: SupportSetupOptions = {}
 ): Router {
   try {

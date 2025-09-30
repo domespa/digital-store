@@ -1,4 +1,3 @@
-import { PrismaClient } from "../generated/prisma";
 import {
   RecommendationResult,
   SimilarityScore,
@@ -7,8 +6,7 @@ import {
   ProductWithRecommendationDetails,
   hasValidCategory,
 } from "../types/recommendations";
-
-const prisma = new PrismaClient();
+import { prisma } from "../utils/prisma";
 
 // ===========================================
 //                CONSTANTS

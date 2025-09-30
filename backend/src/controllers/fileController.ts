@@ -1,10 +1,8 @@
 import { Request, Response } from "express";
 import { FileUploadService, cloudinary } from "../services/uploadService";
-import { PrismaClient } from "../generated/prisma";
 import { catchAsync } from "../utils/catchAsync";
 import { CustomError } from "../utils/customError";
-
-const prisma = new PrismaClient();
+import { prisma } from "../utils/prisma";
 
 export class FileController {
   // POST /api/files/upload/image - Upload singola immagine
@@ -87,7 +85,7 @@ export class FileController {
       }
 
       const uploadService = new FileUploadService();
-      await uploadService.uploadProductGallery(
+      const createdImages = await uploadService.uploadProductGallery(
         req.files,
         productId,
         req.user?.id
@@ -116,7 +114,7 @@ export class FileController {
         message: `${req.files.length} images uploaded successfully`,
         data: {
           productId,
-          images: productImages,
+          images: createdImages,
           totalImages: productImages.length,
         },
       });
@@ -139,7 +137,7 @@ export class FileController {
       .substring(0, 50);
 
     const uploadService = new FileUploadService();
-    const result = await uploadService.uploadImage(
+    const result = await uploadService.uploadDigitalFile(
       req.file.path,
       req.file.originalname,
       sanitizedFolder,

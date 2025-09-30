@@ -177,6 +177,63 @@ export class AnalyticsController {
     }
   );
 
+  // EXPORT DATI ANALYTICS
+  // POST /api/admin/analytics/export
+  static exportAnalytics = catchAsync(
+    async (req: AdminRequest, res: Response) => {
+      const { format, metrics, period, from, to } = req.body;
+
+      if (!format || !metrics) {
+        throw new AnalyticsError(
+          "Format e metrics sono richiesti per l'export",
+          400
+        );
+      }
+
+      res.json({
+        success: true,
+        message: "Export functionality non ancora implementata",
+        data: {
+          format,
+          metrics,
+          period,
+          estimatedSize: "2.5MB",
+          estimatedRows: 1500,
+        },
+      });
+    }
+  );
+
+  // COMPARAZIONE PERIODI
+  // GET /api/admin/analytics/compare
+  static comparePeriods = catchAsync(
+    async (req: AdminRequest, res: Response) => {
+      const { currentPeriod, previousPeriod, metric } = req.query;
+
+      if (!currentPeriod || !previousPeriod || !metric) {
+        throw new AnalyticsError(
+          "currentPeriod, previousPeriod e metric sono richiesti",
+          400
+        );
+      }
+
+      // TODO: Implementa logica comparazione
+      res.json({
+        success: true,
+        data: {
+          comparison: {
+            current: { period: currentPeriod, value: 0 },
+            previous: { period: previousPeriod, value: 0 },
+            change: 0,
+            changePercent: 0,
+            trend: "stable" as const,
+          },
+          metric,
+        },
+      });
+    }
+  );
+
   // TOP PRODUCTS PER PERIODO
   // GET /api/admin/analytics/top-products
   static getTopProducts = catchAsync(
@@ -201,6 +258,50 @@ export class AnalyticsController {
       });
     }
   );
+
+  // PERFORMANCE PER CATEGORIA
+  // GET /api/admin/analytics/categories
+  static getCategoryPerformance = catchAsync(
+    async (req: AdminRequest, res: Response) => {
+      const filters = this.parseAnalyticsFilters(
+        req.query as AnalyticsQueryParams
+      );
+
+      // TODO: Implementa category performance
+      res.json({
+        success: true,
+        data: {
+          categories: [],
+          period: filters.period,
+        },
+      });
+    }
+  );
+
+  // TREND ANALYSIS
+  // GET /api/admin/analytics/trends
+  static getTrends = catchAsync(async (req: AdminRequest, res: Response) => {
+    const { metric, period } = req.query;
+
+    if (!metric) {
+      throw new AnalyticsError("Metric è richiesto per trend analysis", 400);
+    }
+
+    // TODO: Implementa trend analysis
+    res.json({
+      success: true,
+      data: {
+        metric,
+        period: period || "month",
+        trend: "stable" as const,
+        prediction: {
+          nextValue: 0,
+          confidence: 0,
+        },
+        data: [],
+      },
+    });
+  });
 
   // GET /api/admin/analytics/period-data
   static getPeriodData = catchAsync(

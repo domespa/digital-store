@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { PrismaClient, Prisma } from "../generated/prisma";
+import { Prisma } from "../generated/prisma";
 import {
   CreateOrderRequest,
   AdminOrderResponse,
@@ -21,8 +21,8 @@ import { currencyService } from "../services/currencyService";
 import EmailService from "../services/emailService";
 import { catchAsync } from "../utils/catchAsync";
 import { CustomError } from "../utils/customError";
+import { prisma } from "../utils/prisma";
 
-const prisma = new PrismaClient();
 const emailService = new EmailService();
 
 // ============== UTILITY FUNCTIONS ==============
