@@ -106,12 +106,11 @@ export default function ProblemsSect() {
 
         {/* STATS */}
         <div className="mt-8 sm:mt-12 lg:mt-16">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
             {[
               { number: "15,000+", label: "Women Transformed" },
               { number: "4.9/5", label: "Average Rating" },
               { number: "98%", label: "Satisfaction Rate" },
-              { number: "30 days", label: "Money-Back Guarantee" },
             ].map((stat, index) => (
               <div
                 key={index}

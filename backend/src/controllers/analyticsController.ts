@@ -331,11 +331,12 @@ export class AnalyticsController {
         ...(to ? { to: new Date(to as string) } : {}),
       };
 
-      const data = await AnalyticsService.getPeriodData(filters);
+      const result = await AnalyticsService.getPeriodData(filters);
 
       res.json({
         success: true,
-        data,
+        data: result.periodData,
+        summary: result.summary,
       });
     }
   );

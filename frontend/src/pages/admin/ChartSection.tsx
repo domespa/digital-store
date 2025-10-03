@@ -42,7 +42,6 @@ export function ChartsSection({
   loading = false,
   data = [],
 }: ChartsSectionProps) {
-  // X
   const getChartLabels = useCallback(() => {
     switch (period) {
       case "today":
@@ -55,7 +54,6 @@ export function ChartsSection({
         return ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
       case "month":
-        // Giorni del mese corrente
         const now = new Date();
         const daysInMonth = new Date(
           now.getFullYear(),
@@ -91,7 +89,6 @@ export function ChartsSection({
 
   const labels = getChartLabels();
 
-  // GRAPH
   const ordersData = useMemo(() => {
     const ordersPerPeriod = Array(labels.length).fill(0);
 
@@ -215,7 +212,7 @@ export function ChartsSection({
         displayColors: true,
         callbacks: {
           title: (context: any) => {
-            return `Ore ${context[0].label}`;
+            return `${context[0].label}`;
           },
         },
       },
@@ -254,7 +251,6 @@ export function ChartsSection({
     },
   };
 
-  // €
   const revenueOptions = {
     ...chartOptions,
     scales: {
@@ -308,7 +304,6 @@ export function ChartsSection({
     );
   }
 
-  // Empty state
   if (!data || data.length === 0) {
     return (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
@@ -338,7 +333,6 @@ export function ChartsSection({
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-      {/* GRAF ORD */}
       <Card>
         <div className="h-80">
           <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
@@ -353,7 +347,6 @@ export function ChartsSection({
         </div>
       </Card>
 
-      {/* GRAF REV */}
       <Card>
         <div className="h-80">
           <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
@@ -373,7 +366,7 @@ export function ChartsSection({
 }
 
 // =================================
-//              HELPER
+//              HOOK API
 // =================================
 export function useChartsData(
   period: "today" | "week" | "month" | "year" | "total"
@@ -388,14 +381,35 @@ export function useChartsData(
       setError(null);
 
       try {
-        const mockData: ChartDataPoint[] = generateMockDataForPeriod(period);
+        const token = localStorage.getItem("token");
 
-        await new Promise((resolve) => setTimeout(resolve, 800));
+        const response = await fetch(
+          `${
+            import.meta.env.VITE_API_URL
+          }/api/admin/analytics/period-data?period=${period}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          }
+        );
 
-        setData(mockData);
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const result = await response.json();
+
+        if (result.success && result.data) {
+          setData(result.data);
+        } else {
+          throw new Error("Invalid response format");
+        }
       } catch (err) {
-        setError("Errore nel caricamento dei dati grafici");
+        setError("Failed to load chart data");
         console.error("Charts data error:", err);
+        setData([]);
       } finally {
         setLoading(false);
       }
@@ -405,109 +419,4 @@ export function useChartsData(
   }, [period]);
 
   return { data, loading, error };
-}
-
-function generateMockDataForPeriod(
-  period: "today" | "week" | "month" | "year" | "total"
-): ChartDataPoint[] {
-  switch (period) {
-    case "today":
-      return Array.from({ length: 24 }, (_, hour) => {
-        const isPeakTime =
-          (hour >= 10 && hour <= 14) || (hour >= 18 && hour <= 22);
-        const baseOrders = isPeakTime ? 8 : 2;
-        const baseRevenue = isPeakTime ? 600 : 120;
-
-        return {
-          period: `${hour.toString().padStart(2, "0")}:00`,
-          orders: Math.floor(Math.random() * baseOrders) + baseOrders,
-          revenue: Math.floor(Math.random() * baseRevenue) + baseRevenue,
-          timestamp: new Date().toISOString(),
-        };
-      });
-
-    case "week":
-      // 7 giorni: Lun-Dom
-      const weekDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-      return weekDays.map((day, index) => {
-        const isWeekend = index >= 5;
-        const baseOrders = isWeekend ? 15 : 25;
-        const baseRevenue = isWeekend ? 1200 : 2000;
-
-        return {
-          period: day,
-          orders: Math.floor(Math.random() * baseOrders) + baseOrders,
-          revenue: Math.floor(Math.random() * baseRevenue) + baseRevenue,
-          timestamp: new Date().toISOString(),
-        };
-      });
-
-    case "month":
-      // Giorni del mese corrente
-      const now = new Date();
-      const daysInMonth = new Date(
-        now.getFullYear(),
-        now.getMonth() + 1,
-        0
-      ).getDate();
-      return Array.from({ length: daysInMonth }, (_, day) => {
-        const dayNum = day + 1;
-        const baseOrders = 20;
-        const baseRevenue = 1500;
-
-        return {
-          period: dayNum.toString(),
-          orders: Math.floor(Math.random() * baseOrders) + baseOrders,
-          revenue: Math.floor(Math.random() * baseRevenue) + baseRevenue,
-          timestamp: new Date().toISOString(),
-        };
-      });
-
-    case "year":
-      // 12 mesi
-      const months = [
-        "Jan",
-        "Feb",
-        "Mar",
-        "Apr",
-        "May",
-        "Jun",
-        "Jul",
-        "Aug",
-        "Sep",
-        "Oct",
-        "Nov",
-        "Dec",
-      ];
-      return months.map((month) => {
-        const baseOrders = 500;
-        const baseRevenue = 40000;
-
-        return {
-          period: month,
-          orders: Math.floor(Math.random() * baseOrders) + baseOrders,
-          revenue: Math.floor(Math.random() * baseRevenue) + baseRevenue,
-          timestamp: new Date().toISOString(),
-        };
-      });
-
-    case "total":
-      // Ultimi 5 anni
-      const currentYear = new Date().getFullYear();
-      return Array.from({ length: 5 }, (_, index) => {
-        const year = currentYear - 4 + index;
-        const baseOrders = 5000;
-        const baseRevenue = 500000;
-
-        return {
-          period: year.toString(),
-          orders: Math.floor(Math.random() * baseOrders) + baseOrders,
-          revenue: Math.floor(Math.random() * baseRevenue) + baseRevenue,
-          timestamp: new Date().toISOString(),
-        };
-      });
-
-    default:
-      return [];
-  }
 }

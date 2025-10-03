@@ -113,36 +113,34 @@ export function useAnalyticsDashboard(): AnalyticsDashboardData &
         const filters = getApiFilters(selectedPeriod);
         console.log("📋 API filters:", filters);
 
-        console.log("🔄 Calling adminApi.getPeriodData...");
         const response = await adminApi.getPeriodData(filters);
-
         console.log("✅ API Response received:", response);
 
         if (response && response.success && response.data) {
-          const chartDataPoints: ChartDataPoint[] =
-            response.data.periodData.map((item: any) => ({
-              period: item.period,
-              orders: item.orders,
-              revenue: item.revenue,
-              timestamp: item.timestamp,
-            }));
+          const chartDataPoints: ChartDataPoint[] = Array.isArray(response.data)
+            ? response.data.map((item: any) => ({
+                period: item.period,
+                orders: item.orders,
+                revenue: item.revenue,
+                timestamp: item.timestamp,
+              }))
+            : [];
 
           console.log("📊 Chart data points created:", chartDataPoints);
           setChartData(chartDataPoints);
 
           setInsights({
-            peakPeriod: response.data.summary.peakPeriod,
-            summary: {
-              totalOrders: response.data.summary.totalOrders,
-              totalRevenue: response.data.summary.totalRevenue,
-              completedOrders:
-                (response.data.summary as any).completedOrders || 0,
-              pendingOrders: (response.data.summary as any).pendingOrders || 0,
-              conversionRate:
-                (response.data.summary as any).conversionRate || 0,
-              averageOrderValue:
-                (response.data.summary as any).averageOrderValue || 0,
-            },
+            peakPeriod: response.summary?.peakPeriod,
+            summary: response.summary
+              ? {
+                  totalOrders: response.summary.totalOrders,
+                  totalRevenue: response.summary.totalRevenue,
+                  completedOrders: response.summary.completedOrders,
+                  pendingOrders: response.summary.pendingOrders,
+                  conversionRate: response.summary.conversionRate,
+                  averageOrderValue: response.summary.averageOrderValue,
+                }
+              : undefined,
           });
 
           console.log("✅ Real data loaded successfully!");
@@ -156,6 +154,9 @@ export function useAnalyticsDashboard(): AnalyticsDashboardData &
       } catch (err: any) {
         console.error("❌ Error loading chart data:", err);
         setError("Errore nel caricamento dei dati grafici. Riprova più tardi.");
+        // ✅ Set empty data on error
+        setChartData([]);
+        setInsights({});
       } finally {
         setChartsLoading(false);
       }

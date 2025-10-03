@@ -78,16 +78,18 @@ interface PeriodDataPoint {
 
 interface PeriodDataResponse {
   success: boolean;
-  data: {
-    periodData: PeriodDataPoint[];
-    summary: {
-      totalOrders: number;
-      totalRevenue: number;
-      peakPeriod: {
-        period: string;
-        orders: number;
-        revenue: number;
-      };
+  data: PeriodDataPoint[];
+  summary: {
+    totalOrders: number;
+    totalRevenue: number;
+    completedOrders: number;
+    pendingOrders: number;
+    conversionRate: number;
+    averageOrderValue: number;
+    peakPeriod: {
+      period: string;
+      orders: number;
+      revenue: number;
     };
   };
 }
@@ -461,7 +463,7 @@ export const adminAnalytics = {
 
       return {
         stats: statsResponse,
-        periodData: periodResponse.data.periodData,
+        periodData: periodResponse.data,
         insights: insightsResponse?.data || null,
       };
     } catch (error) {

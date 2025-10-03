@@ -1,25 +1,22 @@
 import { useLandingContext } from "../../../context/LandingContext";
-import { useLanding } from "../../../hooks/useLanding";
 import { useLandingCart } from "../../../hooks/useLandingCart";
-import adhdWomenConfig from "../../../config/landing-config/adhd-women.config";
 
 interface PricingSect {
   className?: string;
 }
 
-export default function PricingSect({ className }: PricingSect = {}) {
+export default function PricingSect({}: PricingSect = {}) {
   const landingContext = useLandingContext();
   const landingCart = useLandingCart({ landingContext });
 
   const { config, user, isLoading: isLoadingUser } = landingContext;
   const {
-    cart,
     isLoading: isLoadingCart,
     formatPrice,
     calculateSaving,
   } = landingCart;
 
-  if (isLoadingUser || !config) {
+  if (isLoadingUser || !config || landingCart.isLoadingProduct) {
     return (
       <div className="flex justify-center items-center py-20">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
@@ -32,8 +29,8 @@ export default function PricingSect({ className }: PricingSect = {}) {
   const userCurrency = user?.currency || "USD";
 
   // MOSTRIAMO SOLO I PREZZI IN BASE ALLA SUA PROVENZIENZA
-  const displayMainPrice = config.pricing.mainPrice;
-  const displayOriginalPrice = config.pricing.originalPrice;
+  const displayMainPrice = landingCart.mainPrice;
+  const displayOriginalPrice = landingCart.originalPrice;
   return (
     <section className="py-20 bg-gradient-to-br from-purple-50 to-pink-50">
       <div className="max-w-4xl mx-auto px-6">
@@ -73,7 +70,7 @@ export default function PricingSect({ className }: PricingSect = {}) {
             {/* RISPARMIO */}
             {savings && (
               <div className="text-lg text-green-600 font-semibold">
-                Risparmi {formatPrice(savings.savings, userCurrency)} (
+                Save {formatPrice(savings.savings, userCurrency)} (
                 {savings.savingsPercentage}%)
               </div>
             )}

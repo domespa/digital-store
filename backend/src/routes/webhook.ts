@@ -37,6 +37,63 @@ router.post(
             },
           });
 
+          const order = await prisma.order.findFirst({
+            where: { stripePaymentIntentId: paymentIntent.id },
+            include: {
+              orderItems: {
+                include: {
+                  product: {
+                    select: {
+                      id: true,
+                      name: true,
+                      description: true,
+                      fileName: true,
+                      filePath: true,
+                    },
+                  },
+                },
+              },
+            },
+          });
+
+          if (order) {
+            const EmailService = (await import("../services/emailService"))
+              .default;
+            const emailService = new EmailService();
+
+            await emailService.sendOrderStatusUpdate(
+              {
+                id: order.id,
+                customerEmail: order.customerEmail,
+                customerFirstName: order.customerFirstName,
+                customerLastName: order.customerLastName,
+                total: order.total.toNumber(),
+                status: order.status,
+                paymentStatus: order.paymentStatus,
+                paymentProvider: "STRIPE",
+                createdAt: order.createdAt,
+                updatedAt: order.updatedAt,
+                orderItems: order.orderItems.map((item) => ({
+                  id: item.id,
+                  quantity: item.quantity,
+                  price: item.price.toNumber(),
+                  productId: item.productId || "",
+                  product: item.product
+                    ? {
+                        id: item.product.id,
+                        name: item.product.name,
+                        description: item.product.description || "",
+                        fileName: item.product.fileName || "",
+                        filePath: item.product.filePath || null,
+                      }
+                    : null,
+                })),
+              },
+              "PENDING"
+            );
+            console.log(`Payment success email sent for order: ${order.id}`);
+          }
+
           console.log(
             `Payment succeeded for PaymentIntent: ${paymentIntent.id}`
           );

@@ -5,11 +5,16 @@ import type { LandingPageProps } from "../../types/landing";
 //      IMPORT SEZIONI
 // ============================
 import HeroSect from "./sections/HeroSect";
+import TrustBarSect from "./sections/TrustBarSect";
+import UrgencySect from "./sections/UrgencySect";
 import ProblemsSect from "./sections/ProblemsSect";
+import ContentPreviewSect from "./sections/ContentPreviewSect";
 import FeaturesSect from "./sections/FeaturesSect";
 import TestimonialSect from "./sections/TestimonialSect";
-import FaqSect from "./sections/FaqSect";
 import PricingSect from "./sections/PricingSect";
+import FaqSect from "./sections/FaqSect";
+import FinalCtaSect from "./sections/FinalCtaSect";
+import StickyCtaBar from "./sections/StickyCtaBar";
 import CartSlideBar from "../cart/CartSlideBar";
 import CartIcon from "../cart/CartIcon";
 import { useEffect } from "react";
@@ -32,7 +37,7 @@ const LandingPageContent = () => {
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Rilevamento posizione...</p>
+          <p className="text-gray-600">Loading your experience...</p>
         </div>
       </div>
     );
@@ -41,11 +46,16 @@ const LandingPageContent = () => {
   return (
     <div className="landing-page">
       <HeroSect />
+      <TrustBarSect />
+      <UrgencySect />
       <ProblemsSect />
+      <ContentPreviewSect />
       <FeaturesSect />
       <TestimonialSect />
-      <FaqSect />
       <PricingSect />
+      <FaqSect />
+      <FinalCtaSect />
+      <StickyCtaBar />
     </div>
   );
 };

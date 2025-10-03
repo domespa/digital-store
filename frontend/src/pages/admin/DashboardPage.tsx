@@ -49,7 +49,6 @@ export default function DashboardPage() {
     value,
     subtitle,
     icon,
-    color,
   }: {
     title: string;
     value: string | number;

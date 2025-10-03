@@ -190,9 +190,6 @@ export default function CartSlideBar({ className }: CartSlideBar = {}) {
     });
 
     setCheckoutStep("success");
-    setTimeout(() => {
-      clearCart();
-    }, 100);
   };
 
   // STRIPE PAYMENT ERROR
@@ -581,6 +578,7 @@ export default function CartSlideBar({ className }: CartSlideBar = {}) {
 
                 <button
                   onClick={() => {
+                    clearCart();
                     toggleCart();
                     resetCheckout();
                   }}

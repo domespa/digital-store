@@ -1,7 +1,17 @@
-import { useEffect, useCallback } from "react";
+import { useEffect, useCallback, useState } from "react";
 import { useCart } from "./useCart";
 import type { LandingContextType } from "../types/landing";
 import type { ProductToAdd } from "../types/cart";
+
+interface BackendProduct {
+  id: string;
+  name: string;
+  price: number;
+  compareAtPrice?: number;
+  description?: string;
+  images?: string[];
+  currency: string;
+}
 
 // ========================
 //     COMBINIAMO I TIPI
@@ -13,6 +23,49 @@ interface UseLandingCart {
 export const useLandingCart = ({ landingContext }: UseLandingCart) => {
   const cart = useCart();
   const { config, user, isLoading: isLoadingUser } = landingContext;
+  const [backendProduct, setBackendProduct] = useState<BackendProduct | null>(
+    null
+  );
+  const [isLoadingProduct, setIsLoadingProduct] = useState(false);
+
+  // ========================
+  //     PRODOTTO PRESO DA.CONFIG
+  // ========================
+  useEffect(() => {
+    const fetchProduct = async () => {
+      if (!config?.productId) {
+        console.warn("⚠️ productId mancante nel config");
+        return;
+      }
+
+      setIsLoadingProduct(true);
+      try {
+        const response = await fetch(`/api/products/${config.productId}`);
+        if (!response.ok) throw new Error("Prodotto non trovato");
+
+        const data = await response.json();
+        console.log("✅ Prodotto fetchato dal backend:", data);
+        setBackendProduct(data.product);
+      } catch (error) {
+        console.error("❌ Errore fetch prodotto:", error);
+        console.log("📌 Fallback su prezzi config");
+      } finally {
+        setIsLoadingProduct(false);
+      }
+    };
+
+    fetchProduct();
+  }, [config?.productId]);
+
+  const getMainPrice = useCallback((): number => {
+    return backendProduct?.price ?? config?.pricing.mainPrice ?? 47;
+  }, [backendProduct, config]);
+
+  const getOriginalPrice = useCallback((): number => {
+    return (
+      backendProduct?.compareAtPrice ?? config?.pricing.originalPrice ?? 197
+    );
+  }, [backendProduct, config]);
 
   // ========================
   //     SINCRO VALUTA
@@ -36,9 +89,9 @@ export const useLandingCart = ({ landingContext }: UseLandingCart) => {
 
     const product: ProductToAdd = {
       id: `main-product-${config.productId}`,
-      productId: config.productId || "cmf6ygddx0001lui8epp8wl9o",
-      name: config.hero.title,
-      price: config.pricing.mainPrice,
+      productId: config.productId || "cmgagj3jr00044emfdvtzucfb",
+      name: backendProduct?.name || config.hero.title,
+      price: backendProduct?.price ?? config.pricing.mainPrice,
       currency: config.pricing.currency,
       image: config.hero.image,
       description: config.hero.subtitle,
@@ -109,25 +162,26 @@ export const useLandingCart = ({ landingContext }: UseLandingCart) => {
     if (!config) return null;
 
     const currency = user?.currency || config.pricing.currency;
-    const savings = config.pricing.originalPrice - config.pricing.mainPrice;
-    const savingsPercentage = Math.round(
-      (savings / config.pricing.originalPrice) * 100
-    );
+    const originalPrice = getOriginalPrice();
+    const mainPrice = getMainPrice();
+
+    const savings = originalPrice - mainPrice;
+    const savingsPercentage = Math.round((savings / originalPrice) * 100);
 
     return {
-      originalPrice: config.pricing.originalPrice,
-      mainPrice: config.pricing.mainPrice,
+      originalPrice,
+      mainPrice,
       savings,
       savingsPercentage,
       currency,
     };
-  }, [config, user]);
+  }, [config, user, getMainPrice, getOriginalPrice]);
 
   // ============================
   //      COMBINIAMO GLI STATI
   // ============================
 
-  const isLoading = isLoadingUser || cart.cart.isConverting;
+  const isLoading = isLoadingUser || cart.cart.isConverting || isLoadingProduct;
 
   return {
     // RITORNIAMO LO STATO DEL CARRELLO
@@ -148,7 +202,12 @@ export const useLandingCart = ({ landingContext }: UseLandingCart) => {
 
     isLoading,
     isLoadingUser,
+    isLoadingProduct,
     userCurrency: user?.currency,
+
+    mainPrice: backendProduct?.price ?? config?.pricing.mainPrice ?? 47,
+    originalPrice: config?.pricing.originalPrice ?? 197,
+    backendProduct,
 
     // I METODI PER LE CONVERSIONI DELLA VALUTA
     updateCurrency: cart.updateCurrency,

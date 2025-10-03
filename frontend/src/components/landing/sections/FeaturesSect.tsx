@@ -15,10 +15,11 @@ export default function FeaturesSect() {
       </section>
     );
   }
+
   return (
     <section className="py-12 sm:py-16 lg:py-24 bg-gradient-to-br from-purple-50 via-indigo-50 to-blue-50">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-        {/* ============== TITLE + SUBTITLE ============== */}
+        {/* TITLE + SUBTITLE */}
         <div className="text-center mb-8 sm:mb-12 lg:mb-16">
           <h2 className="text-2xl sm:text-3xl lg:text-4xl xl:text-5xl font-bold text-gray-900 mb-4 sm:mb-6">
             {config.features.title}
@@ -28,14 +29,13 @@ export default function FeaturesSect() {
           </p>
         </div>
 
-        {/* ============== FEATURES GRID ============== */}
+        {/* FEATURES GRID */}
         <div className="grid gap-6 sm:gap-8 lg:gap-10 md:grid-cols-2 mb-12 sm:mb-16 lg:mb-20">
-          {config.features.features.map((feature, index) => (
+          {config.features.features.map((feature) => (
             <div
               key={feature.id}
               className="bg-white rounded-xl sm:rounded-2xl shadow-xl p-6 sm:p-8 lg:p-10 border-l-4 border-purple-400 transform transition-all duration-300 hover:scale-105 hover:shadow-2xl group"
             >
-              {/* ICON + TITLE */}
               <div className="flex items-start mb-4 sm:mb-6">
                 <div className="text-3xl sm:text-4xl mr-4 flex-shrink-0 group-hover:scale-110 transition-transform duration-200">
                   {feature.icon}
@@ -50,7 +50,6 @@ export default function FeaturesSect() {
                 </div>
               </div>
 
-              {/* BENEFITS LIST */}
               <ul className="space-y-3">
                 {feature.benefits.map((benefit, benefitIndex) => (
                   <li key={benefitIndex} className="flex items-start">
@@ -77,26 +76,75 @@ export default function FeaturesSect() {
           ))}
         </div>
 
-        {/* ============== BONUSES SECTION ============== */}
+        {/* CHAPTER HIGHLIGHTS */}
+        <div className="mb-16">
+          <h3 className="text-3xl font-bold text-center text-gray-900 mb-8">
+            What You'll Discover Inside
+          </h3>
+          <div className="grid md:grid-cols-2 gap-6">
+            <div className="bg-white p-6 rounded-xl shadow-lg border-l-4 border-purple-500">
+              <h4 className="font-bold text-purple-600 mb-3 text-lg">
+                Chapter 2: Understanding Masking
+              </h4>
+              <p className="text-gray-700">
+                Learn why you've been pretending to be "normal" and what it's
+                costing you. Discover how to unmask safely and authentically
+                without losing yourself.
+              </p>
+            </div>
+
+            <div className="bg-white p-6 rounded-xl shadow-lg border-l-4 border-pink-500">
+              <h4 className="font-bold text-pink-600 mb-3 text-lg">
+                Chapter 5: The 2-Minute Rule
+              </h4>
+              <p className="text-gray-700">
+                The simple technique that stops procrastination before it
+                starts. Works even when you have zero motivation or energy.
+              </p>
+            </div>
+
+            <div className="bg-white p-6 rounded-xl shadow-lg border-l-4 border-indigo-500">
+              <h4 className="font-bold text-indigo-600 mb-3 text-lg">
+                Chapter 7: ADHD Motherhood
+              </h4>
+              <p className="text-gray-700">
+                Managing your ADHD while raising kids. Morning routines that
+                work, handling mom guilt, and modeling healthy ADHD management
+                for your children.
+              </p>
+            </div>
+
+            <div className="bg-white p-6 rounded-xl shadow-lg border-l-4 border-teal-500">
+              <h4 className="font-bold text-teal-600 mb-3 text-lg">
+                Chapter 9: Real Transformation Stories
+              </h4>
+              <p className="text-gray-700">
+                Stories from Maria (entrepreneur), Sarah (mom of 3), and
+                Jennifer (student) who went from struggling daily to thriving in
+                their lives.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* BONUSES SECTION */}
         <div className="bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl sm:rounded-3xl p-6 sm:p-8 lg:p-12 text-white">
           <div className="text-center mb-8 sm:mb-10 lg:mb-12">
             <h3 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-3 sm:mb-4">
-              🎁 Exclusive Bonuses Included
+              Exclusive Bonuses Included
             </h3>
             <p className="text-lg sm:text-xl text-purple-100 max-w-2xl mx-auto leading-relaxed">
-              In addition to the main ebook, you'll get these incredible bonuses
+              In addition to the main guide, you'll get these incredible bonuses
               absolutely FREE
             </p>
           </div>
 
-          {/* BONUSES GRID */}
-          <div className="grid gap-4 sm:gap-6 md:grid-cols-3">
-            {config.features.bonuses.map((bonus, index) => (
+          <div className="grid gap-4 sm:gap-6 md:grid-cols-2 lg:grid-cols-4">
+            {config.features.bonuses.map((bonus) => (
               <div
                 key={bonus.id}
                 className="bg-white/10 backdrop-blur rounded-xl p-4 sm:p-6 border border-white/20 transform transition-all duration-300 hover:scale-105 hover:bg-white/15"
               >
-                {/* BONUS ICON + VALUE */}
                 <div className="flex items-center justify-between mb-3 sm:mb-4">
                   <div className="text-2xl sm:text-3xl">{bonus.icon}</div>
                   <div className="bg-yellow-400 text-purple-900 px-2 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-bold">
@@ -104,7 +152,6 @@ export default function FeaturesSect() {
                   </div>
                 </div>
 
-                {/* BONUS TITLE + DESCRIPTION */}
                 <h4 className="text-lg sm:text-xl font-bold mb-2 sm:mb-3">
                   {bonus.title}
                 </h4>
@@ -115,7 +162,6 @@ export default function FeaturesSect() {
             ))}
           </div>
 
-          {/* TOTAL VALUE CALCULATION */}
           <div className="text-center mt-8 sm:mt-10 lg:mt-12 p-4 sm:p-6 bg-white/10 rounded-xl border border-white/20">
             <p className="text-base sm:text-lg text-purple-100 mb-2">
               Total Bonus Value:
@@ -133,48 +179,52 @@ export default function FeaturesSect() {
           </div>
         </div>
 
-        {/* ============== FEATURES SUMMARY CTA ============== */}
+        {/* FINAL CTA */}
         <div className="text-center mt-12 sm:mt-16 lg:mt-20">
-          <div className="bg-white rounded-xl sm:rounded-2xl shadow-xl p-6 sm:p-8 lg:p-10 max-w-4xl mx-auto">
-            <h3 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 mb-3 sm:mb-4">
-              Everything You Need to Transform Your ADHD Life
+          <div className="bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-2xl p-8 max-w-4xl mx-auto">
+            <h3 className="text-3xl font-bold mb-4">
+              200+ Pages. 10 Chapters. Lifetime Access.
             </h3>
-            <p className="text-base sm:text-lg text-gray-600 mb-6 sm:mb-8 leading-relaxed">
-              This isn't just another self-help book. It's a complete
-              transformation system designed specifically for the female ADHD
-              brain.
+            <p className="text-xl mb-6 text-purple-100">
+              From late diagnosis to daily strategies, relationships to
+              motherhood - everything you need in one complete system.
             </p>
 
-            {/* FEATURE HIGHLIGHTS */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8">
-              {[
-                { icon: "📖", text: "200+ Pages" },
-                { icon: "🎧", text: "Audio Version" },
-                { icon: "📝", text: "Workbook" },
-                { icon: "✅", text: "Checklists" },
-              ].map((item, index) => (
-                <div key={index} className="text-center">
-                  <div className="text-2xl sm:text-3xl mb-2">{item.icon}</div>
-                  <div className="text-sm sm:text-base font-medium text-gray-700">
-                    {item.text}
-                  </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+              <div className="text-center">
+                <div className="text-3xl mb-2">📖</div>
+                <div className="font-bold">200+ Pages</div>
+                <div className="text-sm text-purple-200">Evidence-based</div>
+              </div>
+              <div className="text-center">
+                <div className="text-3xl mb-2">🎧</div>
+                <div className="font-bold">8+ Hours Audio</div>
+                <div className="text-sm text-purple-200">
+                  Professional narration
                 </div>
-              ))}
+              </div>
+              <div className="text-center">
+                <div className="text-3xl mb-2">📝</div>
+                <div className="font-bold">50+ Exercises</div>
+                <div className="text-sm text-purple-200">
+                  Interactive workbook
+                </div>
+              </div>
+              <div className="text-center">
+                <div className="text-3xl mb-2">✅</div>
+                <div className="font-bold">30+ Templates</div>
+                <div className="text-sm text-purple-200">
+                  Ready to use today
+                </div>
+              </div>
             </div>
 
-            <div className="inline-flex items-center text-green-600 font-semibold text-sm sm:text-base">
-              <svg
-                className="w-4 h-4 sm:w-5 sm:h-5 mr-2 flex-shrink-0"
-                fill="currentColor"
-                viewBox="0 0 20 20"
-              >
-                <path
-                  fillRule="evenodd"
-                  d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                  clipRule="evenodd"
-                />
-              </svg>
-              Ready to start your transformation journey?
+            <div className="bg-white/20 backdrop-blur rounded-lg p-4">
+              <p className="text-sm">
+                ⚡ <strong>Instant Download</strong> - Start reading in 2
+                minutes. Works on any device. Yours forever with lifetime
+                updates.
+              </p>
             </div>
           </div>
         </div>

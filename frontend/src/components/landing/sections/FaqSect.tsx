@@ -37,7 +37,7 @@ export default function FaqSect() {
 
         {/* ============== FAQ LIST (SIMPLE) ============== */}
         <div className="max-w-3xl mx-auto space-y-4 sm:space-y-6">
-          {config.faq.faqs.map((faq, index) => {
+          {config.faq.faqs.map((faq) => {
             const isOpen = openFaq === faq.id;
 
             return (
@@ -176,11 +176,10 @@ export default function FaqSect() {
             </div>
 
             {/* SATISFACTION GUARANTEE */}
-            <div className="mt-6 sm:mt-8 p-4 bg-green-50 rounded-lg">
-              <p className="text-sm sm:text-base text-green-800 font-medium">
-                💰 <strong>30-Day Money-Back Guarantee</strong> - If you're not
-                completely satisfied, we'll refund every penny. No questions
-                asked.
+            <div className="mt-6 sm:mt-8 p-4 bg-blue-50 rounded-lg">
+              <p className="text-sm sm:text-base text-blue-800 font-medium">
+                ⚡ <strong>Instant Digital Access</strong> - Download
+                immediately after purchase. Lifetime access included.
               </p>
             </div>
           </div>

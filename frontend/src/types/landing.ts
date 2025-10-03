@@ -6,6 +6,7 @@ export interface HeroConfig {
   subtitle: string;
   image: string;
   ctaText: string;
+  subtext?: string;
 }
 
 export interface LandingUser {
@@ -36,6 +37,7 @@ export interface ProblemsConfig {
   title: string;
   subtitle: string;
   problems: Problem[];
+  emotionalHook: string;
 }
 
 // FEATURES
@@ -85,6 +87,10 @@ export interface PricingConfig {
   guarantees: string[];
   urgency?: PricingUrgency;
   bonuses?: PricingBonus[];
+  valueStack?: Array<{
+    item: string;
+    value: number | string;
+  }>;
 }
 
 export interface FeaturesConfig {
@@ -126,6 +132,56 @@ export interface FAQConfig {
   faqs: FAQ[];
 }
 
+export interface TrustBarConfig {
+  stats: Array<{
+    number: string;
+    label: string;
+    icon?: string;
+  }>;
+  trustedBy?: string;
+  logos?: Array<{
+    name: string;
+    url: string;
+  }>;
+}
+
+export interface UrgencyConfig {
+  enabled: boolean;
+  endDate: string;
+  message: string;
+  urgencyText: string;
+  showStock?: boolean;
+  stockRemaining?: number;
+}
+
+export interface ContentPreviewConfig {
+  title: string;
+  subtitle: string;
+  totalPages: number;
+  chapters: Array<{
+    number: number;
+    title: string;
+    description: string;
+    highlights?: string[];
+  }>;
+}
+
+export interface FinalCtaConfig {
+  title: string;
+  subtitle: string;
+  ctaText: string;
+  guaranteeText: string;
+  urgencyMessage?: string;
+  stats: string[];
+}
+
+export interface StickyBarConfig {
+  enabled: boolean;
+  text: string;
+  ctaText: string;
+  showTimer: boolean;
+}
+
 export interface LandingConfig {
   productId: string;
   hero: HeroConfig;
@@ -141,6 +197,11 @@ export interface LandingConfig {
     countdownEnd?: string;
     currency: string;
   };
+  trustBar: TrustBarConfig;
+  urgency: UrgencyConfig;
+  contentPreview: ContentPreviewConfig;
+  finalCta: FinalCtaConfig;
+  stickyBar: StickyBarConfig;
 }
 
 export interface LandingPageProps {
